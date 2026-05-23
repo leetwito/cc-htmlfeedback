@@ -1,0 +1,12 @@
+{
+  "name": "page-feedback",
+  "version": "1.0.0",
+  "description": "A self-contained, dependency-free in-page feedback tool. Highlight text on any page to leave comments and strikethrough suggestions, then copy structured feedback (with the page URL) to share.",
+  "keywords": ["feedback", "annotation", "chrome-extension", "bookmarklet", "review", "highlight"],
+  "scripts": {
+    "build": "node build.js",
+    "check": "node build.js --check"
+  },
+  "license": "MIT",
+  "private": false
+}

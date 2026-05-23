@@ -1,0 +1,373 @@
+<!-- ===================== Feedback widget (self-contained) ===================== -->
+<style>
+#fb-launch{position:fixed;top:14px;right:16px;z-index:2147483601;display:flex;align-items:center;background:#fff;border:1px solid #d8dbe6;border-radius:999px;box-shadow:0 4px 14px rgba(20,20,40,.16);overflow:hidden}
+#fb-open{display:flex;align-items:center;gap:7px;padding:9px 12px;border:none;background:transparent;color:#1a1a2e;font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+#fb-open:hover{background:#f4f6fb}
+#fb-open svg{width:16px;height:16px}
+#fb-launch .fb-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#103a8e;color:#fff;font:700 11px/18px sans-serif;text-align:center}
+#fb-launch.has .fb-badge{background:#d9402f}
+#fb-quickcopy{display:flex;align-items:center;justify-content:center;padding:9px 11px;border:none;border-left:1px solid #e6e8ef;background:transparent;color:#5b6072;cursor:pointer}
+#fb-quickcopy:hover{background:#f4f6fb;color:#103a8e}
+#fb-quickcopy.copied{color:#1f9d6b}
+#fb-quickcopy svg{width:15px;height:15px}
+#fb-panel{position:fixed;top:14px;right:14px;bottom:14px;width:340px;max-width:calc(100vw - 28px);background:#fbfcff;border:1px solid #e6e8ef;border-radius:14px;box-shadow:0 18px 50px rgba(20,20,40,.22);z-index:2147483602;display:flex;flex-direction:column;transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none;transition:transform .22s ease,opacity .22s ease}
+#fb-panel.open{transform:none;opacity:1;pointer-events:auto}
+body.fb-dock-left #fb-panel{left:14px;right:auto;transform:translateX(calc(-100% - 24px))}
+body.fb-dock-left #fb-panel.open{transform:none}
+body.fb-dock-left #fb-launch{left:16px;right:auto}
+.fb-headbtns{display:flex;gap:6px}
+#fb-dock{width:26px;height:26px;border:none;border-radius:7px;background:#f1f2f7;color:#5b6072;font:700 13px/1 sans-serif;cursor:pointer}
+#fb-dock:hover{background:#e7e9f2}
+#fb-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-8px);z-index:2147483604;background:#1f9d6b;color:#fff;font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 8px 24px rgba(20,20,40,.22);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+#fb-toast.show{opacity:1;transform:translateX(-50%)}
+#fb-toast.err{background:#c0392b}
+.fb-head{padding:14px;border-bottom:1px solid #e6e8ef;background:#fff;border-radius:14px 14px 0 0}
+.fb-headtop{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.fb-title{font:700 13px/1 -apple-system,sans-serif;color:#1a1a2e}
+#fb-close{width:26px;height:26px;border:none;border-radius:7px;background:#f1f2f7;color:#5b6072;font:700 13px/1 sans-serif;cursor:pointer}
+#fb-close:hover{background:#e7e9f2}
+#fb-copy{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:none;border-radius:10px;background:#103a8e;color:#fff;font:700 14px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+#fb-copy:hover{background:#0c2f74}
+#fb-copy.copied{background:#1f9d6b}
+#fb-copy svg{width:16px;height:16px;flex:0 0 auto}
+.fb-count{margin-top:10px;font:600 12px/1 -apple-system,sans-serif;color:#5b6072;text-align:center}
+#fb-list{flex:1;overflow-y:auto;padding:14px}
+#fb-empty{padding:26px 18px;color:#8a90a2;font:14px/1.5 -apple-system,sans-serif;text-align:center}
+.fb-card{position:relative;background:#fff;border:1px solid #e6e8ef;border-radius:10px;padding:11px 34px 12px 12px;margin-bottom:10px;box-shadow:0 1px 2px rgba(20,20,40,.04);cursor:pointer}
+.fb-card.active{border-color:#103a8e;box-shadow:0 0 0 2px rgba(16,58,142,.16)}
+.fb-sec{font:700 10px/1.3 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:#8a90a2;margin-bottom:6px;word-break:break-word}
+.fb-type{display:inline-block;font:700 10px/1 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.05em;padding:3px 7px;border-radius:999px;margin-bottom:8px}
+.fb-type.comment{background:#fdf6dd;color:#8a6d0b;border:1px solid #f0e3a8}
+.fb-type.strike{background:#fdeceb;color:#c0392b;border:1px solid #f3c9c4}
+.fb-quote{font:13px/1.4 -apple-system,sans-serif;color:#334;border-left:3px solid #f6c945;padding-left:8px;margin:0 0 6px;max-height:64px;overflow:auto;white-space:pre-wrap}
+.fb-card.strike .fb-quote{border-left-color:#d9402f;text-decoration:line-through}
+.fb-ctx{font:12px/1.4 -apple-system,sans-serif;color:#8a90a2;margin:0 0 8px;max-height:52px;overflow:auto}
+.fb-ctx b{color:#556}
+.fb-note{font:14px/1.45 -apple-system,sans-serif;color:#1a1a2e;outline:none;min-height:20px;border:1px dashed #d7dbe6;border-radius:6px;padding:4px 6px}
+.fb-note:focus{border-color:#9fb4e0;background:#fbfcff}
+.fb-note:empty:before{content:attr(data-ph);color:#aab1c4}
+.fb-x{position:absolute;top:8px;right:8px;width:22px;height:22px;border:none;border-radius:6px;background:#f1f2f7;color:#5b6072;font:700 12px/1 sans-serif;cursor:pointer}
+.fb-x:hover{background:#fdeceb;color:#c0392b}
+#fb-popover{position:absolute;z-index:2147483603;width:256px;background:#fff;border:1px solid #d8dbe6;border-radius:12px;box-shadow:0 12px 32px rgba(20,20,40,.2);padding:10px;display:none}
+.fb-pop-top{display:flex;justify-content:flex-end;margin-bottom:6px}
+#fb-side{width:26px;height:24px;border:1px solid #e0e3ee;border-radius:7px;background:#f7f8fc;color:#5b6072;font:700 13px/1 sans-serif;cursor:pointer}
+#fb-side:hover{background:#eef1f8}
+#fb-popover textarea{width:100%;box-sizing:border-box;border:1px solid #e0e3ee;border-radius:8px;padding:8px;font:13px/1.4 -apple-system,sans-serif;resize:vertical}
+#fb-hint{font:11px/1.3 -apple-system,sans-serif;color:#9aa0b2;margin:6px 2px 0}
+.fb-pop-row{display:flex;gap:8px;margin-top:8px}
+.fb-pop-row button{flex:1;padding:8px 6px;border:1px solid #e0e3ee;border-radius:8px;font:600 13px/1 -apple-system,sans-serif;cursor:pointer}
+.fb-pop-row button:hover{filter:brightness(.97)}
+#fb-comment{background:#fbf1c4;border-color:#f0e3a8}
+#fb-strike{background:#fdeceb;border-color:#f3c9c4;color:#c0392b}
+.fb-mark,.fb-pending{font:inherit!important;letter-spacing:inherit!important;text-transform:inherit!important;font-variant:inherit!important;color:#1a1a2e!important;-webkit-text-fill-color:#1a1a2e!important;background-clip:border-box!important;-webkit-background-clip:border-box!important;vertical-align:baseline!important}
+.fb-mark{background:#fbe96b;border-radius:2px;cursor:pointer;box-shadow:inset 0 -1px rgba(0,0,0,.07)}
+.fb-mark.strike{background:#fdeceb;text-decoration:line-through;text-decoration-color:#d9402f;text-decoration-thickness:2px}
+.fb-mark.active{outline:2px solid #103a8e;outline-offset:1px}
+.fb-pending{background:#cfe3ff;border-radius:2px;box-shadow:inset 0 -1px rgba(0,0,0,.06)}
+.fb-mark.fb-removed{background:none!important;text-decoration:none!important;box-shadow:none!important;outline:none!important;cursor:auto}
+@media print{#fb-launch,#fb-panel,#fb-popover{display:none!important}.fb-mark{background:none!important;text-decoration:none!important}}
+</style>
+
+<div id="fb-launch" role="group" aria-label="Feedback">
+  <button id="fb-open" type="button" title="Open feedback panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Feedback <span class="fb-badge">0</span>
+  </button>
+  <button id="fb-quickcopy" type="button" title="Copy all feedback" aria-label="Copy all feedback">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  </button>
+</div>
+<div id="fb-toast" role="status" aria-live="polite">✓ Feedback copied</div>
+<aside id="fb-panel" aria-label="Feedback panel">
+  <div class="fb-head">
+    <div class="fb-headtop"><span class="fb-title">Feedback</span><div class="fb-headbtns"><button id="fb-dock" type="button" title="Move panel to the other side" aria-label="Move panel to the other side">⇆</button><button id="fb-close" type="button" title="Close" aria-label="Close feedback panel">✕</button></div></div>
+    <button id="fb-copy" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy feedback
+    </button>
+    <div class="fb-count"><span id="fb-count">0</span> notes</div>
+  </div>
+  <div id="fb-list" role="list"></div>
+  <div id="fb-empty">Select any text in the document to add a note. Selecting a blank space marks an insertion point.</div>
+</aside>
+<div id="fb-popover">
+  <div class="fb-pop-top"><button id="fb-side" type="button" title="Move popover to the other side" aria-label="Move popover to the other side">⇄</button></div>
+  <textarea id="fb-text" rows="3" placeholder="Write your feedback…"></textarea>
+  <div class="fb-pop-row">
+    <button id="fb-comment" type="button" title="Highlight + comment (Enter)">💬 Comment</button>
+    <button id="fb-strike" type="button" title="Strike out — suggest removing (Backspace)">⌫ Strike</button>
+  </div>
+  <div id="fb-hint">Enter to comment · Backspace to strike · Shift+Enter for newline · Esc to cancel</div>
+</div>
+
+<script>
+(function(){
+  const CONTENT = document.body;
+  const launch = document.getElementById('fb-launch');
+  const panel  = document.getElementById('fb-panel');
+  const list   = document.getElementById('fb-list');
+  const empty  = document.getElementById('fb-empty');
+  const pop    = document.getElementById('fb-popover');
+  const ta     = document.getElementById('fb-text');
+  const countEl= document.getElementById('fb-count');
+  const badgeEl= launch.querySelector('.fb-badge');
+  const copyBtn= document.getElementById('fb-copy');
+  const quickCopy = document.getElementById('fb-quickcopy');
+  const FILE   = (function(){ try { return decodeURIComponent(location.href); } catch(e){ return location.href; } })();
+  let pending = null, uid = 0, side = 'right', history = [], hpos = -1;
+  const store = {};  // id -> { id, quote, context, section, note, type, removed } — single source of truth
+  function visibleItems(){ return Object.values(store).filter(f => !f.removed).sort((a, b) => a.id - b.id); }
+
+  const esc = s => (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+  function openPanel(v){ panel.classList.toggle('open', v); }
+  // Publish the control API early — before any throw-prone setup below — so it can never
+  // be missing while the inject guard (__fbWidgetLoaded / #fb-launch) reports the widget present.
+  window.__fbWidget = { open: function(){ openPanel(true); }, close: function(){ openPanel(false); }, toggle: function(){ openPanel(!panel.classList.contains('open')); } };
+  document.getElementById('fb-open').addEventListener('click', () => openPanel(!panel.classList.contains('open')));
+  document.getElementById('fb-close').addEventListener('click', () => openPanel(false));
+  document.getElementById('fb-dock').addEventListener('click', () => document.body.classList.toggle('fb-dock-left'));
+  let toastT;
+  function showToast(msg, isError){ const t = document.getElementById('fb-toast'); t.textContent = (isError ? '⚠️ ' : '✓ ') + msg; t.classList.toggle('err', !!isError); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600); }
+
+  /* ---- context helpers ---- */
+  function blockOf(node){
+    let el = node.nodeType === 3 ? node.parentElement : node;
+    const stop = {P:1,LI:1,TD:1,TH:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,FIGCAPTION:1,BLOCKQUOTE:1,DT:1,DD:1,CAPTION:1,DIV:1};
+    while(el && el !== document.body && !stop[el.tagName]) el = el.parentElement;
+    return el || (node.parentElement || document.body);
+  }
+  function clip(s, n){ s = (s||'').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+  function sectionOf(node){
+    const hs = document.querySelectorAll('h1,h2,h3,h4');
+    let best = '';
+    hs.forEach(h => { if(node.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_PRECEDING) best = h.textContent; });
+    return clip(best.replace(/^\s*\d+(?:\.\d+)*[.):]?\s*/, ''), 80);
+  }
+  function contextOf(node){ return clip(blockOf(node).textContent, 160); }
+
+  /* ---- selection -> popover ---- */
+  CONTENT.addEventListener('mouseup', e => {
+    if(pop.contains(e.target) || panel.contains(e.target) || launch.contains(e.target)) return;
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if(!sel || sel.isCollapsed || !sel.toString()) return;
+      const r = sel.getRangeAt(0);
+      const a = r.commonAncestorContainer;
+      if(panel.contains(a) || pop.contains(a) || launch.contains(a)) return;
+      showPop(r);
+    }, 0);
+  });
+
+  function place(rect){
+    const w = pop.offsetWidth;
+    let left = side === 'left' ? (window.scrollX + rect.right - w) : (window.scrollX + rect.left);
+    const top = window.scrollY + rect.bottom + 8;
+    const maxLeft = window.scrollX + document.documentElement.clientWidth - w - 12;
+    left = Math.max(window.scrollX + 8, Math.min(left, maxLeft));
+    pop.style.left = left + 'px';
+    pop.style.top  = top + 'px';
+  }
+  function showPop(range){
+    clearPending();
+    const node = range.startContainer;
+    const rect = range.getBoundingClientRect();
+    pending = { quote: range.toString(), context: contextOf(node), section: sectionOf(node), rect };
+    try { wrap(range, 'pending', 'fb-pending'); } catch(err){ console.warn('Highlight failed:', err); }
+    const sel = window.getSelection(); if(sel) sel.removeAllRanges();
+    pop.style.display = 'block';
+    ta.value = '';
+    place(rect);
+    ta.focus();
+  }
+  function clearPending(){ unwrap('pending'); pending = null; }
+  function closePop(){ pop.style.display = 'none'; }
+  function hidePop(){ closePop(); clearPending(); }
+
+  document.getElementById('fb-side').addEventListener('click', () => {
+    side = side === 'right' ? 'left' : 'right';
+    if(pending && pending.rect) place(pending.rect);
+  });
+  document.getElementById('fb-comment').addEventListener('click', () => add('comment'));
+  document.getElementById('fb-strike').addEventListener('click',  () => add('strike'));
+  ta.addEventListener('keydown', e => {
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); add('comment'); }
+    else if(e.key === 'Backspace' && ta.value === ''){ e.preventDefault(); add('strike'); }
+    else if(e.key === 'Escape'){ e.preventDefault(); hidePop(); }
+  });
+
+  function add(type){
+    const spans = document.querySelectorAll('[data-fb-id="pending"]');
+    if(!spans.length || !pending){ hidePop(); return; }
+    const id = ++uid;
+    spans.forEach(sp => { sp.className = 'fb-mark' + (type === 'strike' ? ' strike' : ''); sp.dataset.fbId = id; });
+    store[id] = { id, quote: pending.quote, context: pending.context, section: pending.section, note: ta.value.trim(), type, removed: false };
+    pending = null;
+    render();
+    closePop();
+    record(() => setRemoved(id, false), () => setRemoved(id, true)); // apply = restore, revert = remove
+  }
+
+  /* ---- range wrapping (handles selections spanning multiple nodes) ---- */
+  function wrap(range, id, cls){
+    textNodes(range).forEach(({node, start, end}) => {
+      const r = document.createRange();
+      r.setStart(node, start); r.setEnd(node, end);
+      const span = document.createElement('span');
+      span.className = cls; span.dataset.fbId = id;
+      r.surroundContents(span);
+    });
+  }
+  function textNodes(range){
+    const sc = range.startContainer, ec = range.endContainer, out = [];
+    if(sc === ec && sc.nodeType === 3){ out.push({node: sc, start: range.startOffset, end: range.endOffset}); return out; }
+    const w = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, null);
+    let n;
+    while((n = w.nextNode())){
+      if(!range.intersectsNode(n)) continue;
+      let start = 0, end = n.nodeValue.length;
+      if(n === sc) start = range.startOffset;
+      if(n === ec) end = range.endOffset;
+      if(n !== sc && n !== ec && !n.nodeValue.trim()) continue;
+      if(start < end) out.push({node: n, start, end});
+    }
+    return out;
+  }
+  function unwrap(id){
+    document.querySelectorAll('[data-fb-id="'+id+'"]').forEach(sp => {
+      const p = sp.parentNode;
+      while(sp.firstChild) p.insertBefore(sp.firstChild, sp);
+      p.removeChild(sp); p.normalize();
+    });
+  }
+
+  /* ---- panel: incremental render + event delegation (a card being edited is never rebuilt) ---- */
+  function noteHTML(s){ return esc(s).replace(/\n/g, '<br>'); }
+  function cardHTML(f){
+    const q = f.quote.trim() ? esc(f.quote) : '⎵ (insertion point — empty selection)';
+    return '<button class="fb-x" type="button" title="Discard" aria-label="Discard note">✕</button>' +
+      (f.section ? '<div class="fb-sec">' + esc(f.section) + '</div>' : '') +
+      '<span class="fb-type ' + f.type + '">' + (f.type === 'strike' ? 'Strikethrough' : 'Comment') + '</span>' +
+      '<div class="fb-quote">' + q + '</div>' +
+      (f.context ? '<div class="fb-ctx"><b>In:</b> ' + esc(f.context) + '</div>' : '') +
+      '<div class="fb-note" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-ph="Add a note…">' + noteHTML(f.note) + '</div>';
+  }
+  function render(){
+    const vis = visibleItems(), want = vis.map(f => f.id);
+    [...list.children].forEach(c => { if(!want.includes(+c.dataset.fbId)) c.remove(); });
+    vis.forEach((f, i) => {
+      let card = list.querySelector(':scope > .fb-card[data-fb-id="' + f.id + '"]');
+      if(!card){                                   // note content is written once, on creation, so live edits are never clobbered
+        card = document.createElement('div');
+        card.dataset.fbId = f.id;
+        card.setAttribute('role', 'listitem');
+        card.innerHTML = cardHTML(f);
+      }
+      card.className = 'fb-card' + (f.type === 'strike' ? ' strike' : '') + (card.classList.contains('active') ? ' active' : '');
+      if(list.children[i] !== card) list.insertBefore(card, list.children[i] || null);
+    });
+    countEl.textContent = vis.length;
+    badgeEl.textContent = vis.length;
+    launch.classList.toggle('has', vis.length > 0);
+    empty.style.display = vis.length ? 'none' : 'block';
+  }
+
+  // One delegated listener per event type — no per-card binding, so incremental updates never churn handlers.
+  list.addEventListener('click', e => {
+    const x = e.target.closest('.fb-x');
+    if(x){ e.stopPropagation(); discard(+x.closest('.fb-card').dataset.fbId); return; }
+    if(e.target.closest('.fb-note')) return;       // clicking the note should focus it, not activate
+    const card = e.target.closest('.fb-card');
+    if(card) activate(+card.dataset.fbId, true);
+  });
+  list.addEventListener('input', e => {
+    const note = e.target.closest('.fb-note'); if(!note) return;
+    const f = store[+note.closest('.fb-card').dataset.fbId];
+    if(f) f.note = note.innerText.trim();          // innerText preserves the user's line breaks
+  });
+  list.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' || e.shiftKey) return;
+    const note = e.target.closest('.fb-note'); if(!note) return;
+    e.preventDefault();
+    const f = store[+note.closest('.fb-card').dataset.fbId];
+    if(f) f.note = note.innerText.trim();
+    note.blur(); showToast('Note saved');
+  });
+
+  function discard(id){ setRemoved(id, true); record(() => setRemoved(id, true), () => setRemoved(id, false)); } // apply = remove, revert = restore
+
+  /* ---- undo / redo: one command contract — apply() performs the action, revert() reverses it ---- */
+  function setRemoved(id, removed){
+    if(store[id]) store[id].removed = removed;
+    document.querySelectorAll('[data-fb-id="' + id + '"]').forEach(sp => sp.classList.toggle('fb-removed', removed));
+    render();
+  }
+  function record(apply, revert){ history = history.slice(0, hpos + 1); history.push({ apply, revert }); hpos = history.length - 1; }
+  function undo(){ if(hpos >= 0){ history[hpos].revert(); hpos--; } }
+  function redo(){ if(hpos < history.length - 1){ hpos++; history[hpos].apply(); } }
+
+  function activate(id, scrollToMark){
+    document.querySelectorAll('.fb-mark.active, .fb-card.active').forEach(el => el.classList.remove('active'));
+    const marks = document.querySelectorAll('.fb-mark[data-fb-id="'+id+'"]');
+    marks.forEach(m => m.classList.add('active'));
+    const card = list.querySelector('.fb-card[data-fb-id="'+id+'"]');
+    if(card) card.classList.add('active');
+    if(scrollToMark && marks[0]) marks[0].scrollIntoView({block:'center', behavior:'smooth'});
+    else if(card) card.scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+
+  /* clicking a highlight opens the panel and focuses its card */
+  CONTENT.addEventListener('click', e => {
+    const m = e.target.closest('.fb-mark:not(.fb-removed)');
+    if(m){ openPanel(true); activate(+m.dataset.fbId, false); }
+  });
+
+  /* ---- copy ---- */
+  async function doCopy(btn){
+    if(!visibleItems().length) return;
+    const text = build();
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; }
+    catch(_) {
+      const t = document.createElement('textarea');
+      t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select();
+      try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+      t.remove();
+    }
+    if(!ok){ showToast('Copy failed — select the notes and copy manually', true); return; }
+    showToast('Feedback copied');
+    btn.classList.add('copied');
+    if(btn === copyBtn){ const o = btn.innerHTML; btn.innerHTML = '✓ Copied!'; setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = o; }, 1400); }
+    else { setTimeout(() => btn.classList.remove('copied'), 1400); }
+  }
+  copyBtn.addEventListener('click', () => doCopy(copyBtn));
+  quickCopy.addEventListener('click', e => { e.stopPropagation(); doCopy(quickCopy); });
+  function build(){
+    const out = ['Feedback — ' + document.title, 'File: ' + FILE, '='.repeat(48), ''];
+    visibleItems().forEach((f, i) => {
+      out.push((i+1) + '. [' + (f.type === 'strike' ? 'STRIKE / suggest removing' : 'COMMENT') + ']' + (f.section ? ' — ' + f.section : ''));
+      out.push('   Selected: ' + (f.quote.trim() ? '"' + f.quote.trim() + '"' : '(insertion point — empty selection)'));
+      if(f.context) out.push('   In: "' + f.context + '"');
+      if(f.note) out.push('   Note: ' + f.note);
+      out.push('');
+    });
+    return out.join('\n');
+  }
+
+  /* dismiss popover on outside click / Escape */
+  document.addEventListener('mousedown', e => { if(pop.style.display === 'block' && !pop.contains(e.target)) hidePop(); });
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ hidePop(); return; }
+    if((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')){
+      const ae = document.activeElement;
+      if(ae && (ae.id === 'fb-text' || ae.isContentEditable || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return; // let native text undo work
+      e.preventDefault();
+      if(e.shiftKey) redo(); else undo();
+    }
+  });
+
+  render();
+})();
+</script>
+<!-- ===================== /Feedback widget ===================== -->

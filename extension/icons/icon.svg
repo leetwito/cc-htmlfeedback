@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b50b3"/>
+      <stop offset="1" stop-color="#0c2f74"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <!-- comment bubble -->
+  <path d="M28 30h72a11 11 0 0 1 11 11v38a11 11 0 0 1-11 11H58L40 108V90H28a11 11 0 0 1-11-11V41a11 11 0 0 1 11-11z" fill="#ffffff"/>
+  <!-- highlighted line (yellow = comment) -->
+  <rect x="33" y="48" width="62" height="13" rx="4" fill="#f6c945"/>
+  <!-- struck line (gray text + red strikethrough = strike) -->
+  <rect x="33" y="70" width="48" height="8" rx="3" fill="#ccd4e6"/>
+  <rect x="30" y="73" width="55" height="3.5" rx="1.75" fill="#e0402f"/>
+</svg>

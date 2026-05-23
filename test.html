@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Feedback — Test Document</title>
+<style>
+  :root { --ink:#1f2328; --muted:#57606a; --line:#d8dee4; --accent:#0969da; --bg:#fafbfc; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 120px; }
+  header.doc { border-bottom: 2px solid var(--line); padding-bottom: 24px; margin-bottom: 32px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 700; color: var(--accent); margin: 0 0 8px; }
+  h1 { font-size: 38px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 { font-size: 26px; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 19px; margin: 28px 0 8px; color: var(--muted); }
+  .byline { color: var(--muted); font-size: 14px; }
+  p { margin: 0 0 16px; }
+  a { color: var(--accent); }
+  code { font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: #eef1f4; padding: 2px 6px; border-radius: 5px; }
+  pre { background: #0d1117; color: #e6edf3; padding: 16px 18px; border-radius: 10px; overflow:auto;
+        font: 13.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background: none; padding: 0; color: inherit; }
+  blockquote { margin: 20px 0; padding: 10px 20px; border-left: 4px solid var(--accent);
+               color: var(--muted); font-style: italic; font-size: 19px; background: #fff; }
+  ul, ol { margin: 0 0 16px; padding-left: 26px; }
+  li { margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f0f3f6; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  figure { margin: 28px 0; text-align: center; }
+  .hero { font-size: 64px; line-height: 1.2; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .callout { background: #fff8e6; border: 1px solid #f0e0a8; border-radius: 10px; padding: 14px 18px; margin: 20px 0; }
+  .gradient { background: linear-gradient(90deg,#0969da,#8250df); -webkit-background-clip: text;
+              background-clip: text; color: transparent; font-weight: 800; }
+  .tiny { font-size: 11px; } .huge { font-size: 28px; font-weight: 800; }
+  footer.doc { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <p class="eyebrow">Draft for review · v0.3</p>
+    <h1>Orbit: Async Standups <span class="gradient">Without the Meeting</span></h1>
+    <p class="byline">Product spec — please leave feedback inline. Last edited by J. Rivera · 3 comments unresolved.</p>
+  </header>
+
+  <p>
+    Orbit replaces the daily synchronus standup with short written check-ins that your
+    team posts on thier own schedule. Instead of blocking 15 minutes every morning, people
+    answer three questions whenever they start work, and the digest lands in Slack at a time
+    you choose. This document describes the v1 scope and the open questions we still need to resolve.
+  </p>
+
+  <p>
+    The core insight is simple: <strong>most standup updates are not urgent</strong>, and the ones that
+    are urgent should not wait for a meeting anyway. By moving updates to <em>asynchronous text</em>,
+    we reclaim roughly <code>3.75 hours</code> per person per week and we create a searchable record
+    that new teammates can actually read. At the end of the day, when all is said and done, the
+    fundamental basic goal is to reduce meetings.
+  </p>
+
+  <figure>
+    <div class="hero">🛰️ → 💬 → ✅</div>
+    <figcaption>Figure 1. The Orbit loop: prompt, async reply, auto-digest. (Replace with real diagram before launch.)</figcaption>
+  </figure>
+
+  <h2>1. Problem</h2>
+  <p>
+    Synchronous standups force everyone into the same 15-minute window regardless of timezone,
+    focus state, or whether they even have anything to report. For distributed teams this is
+    especially painful: a 9:30am standup in New York is 6:30am in San Francisco and 2:30pm in London.
+  </p>
+  <blockquote>
+    "We have engineers on four continents. The standup is convenient for exactly none of them,
+    and the one person it does work for spends it reading their phone." — Anonymous EM, user interview
+  </blockquote>
+  <p>
+    There is also a quality problem. Verbal updates evaporate. Nobody can search them, decisions
+    made in standup go unrecorded, and anyone who was out sick has no way to catch up.
+  </p>
+
+  <h2>2. Proposed Solution</h2>
+  <p>Orbit asks each person three questions, once per working day, at a time they configure:</p>
+  <ol>
+    <li>What did you finish since your last check-in?</li>
+    <li>What are you working on next?</li>
+    <li>Is anything blocking you? <strong>(Blockers get flagged to the lead immediately.)</strong></li>
+  </ol>
+
+  <h3>2.1 Delivery</h3>
+  <p>
+    Responses are collected and posted as a single threaded digest to a channel of the team's choosing.
+    Blockers are also DMed to the team lead in real time, so urgent items are not buried in the digest.
+  </p>
+
+  <h3>2.2 Configuration surface</h3>
+  <table>
+    <thead>
+      <tr><th>Setting</th><th>Default</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Check-in prompt time</td><td>09:00 local</td><td>Per-person, respects each member's timezone.</td></tr>
+      <tr><td>Digest delivery time</td><td>10:30 team TZ</td><td>One digest per team, per working day.</td></tr>
+      <tr><td>Reminder cadence</td><td>1 nudge</td><td>TODO: decide if we nag people who miss the window.</td></tr>
+      <tr><td>Weekend check-ins</td><td>Off</td><td>Follows the team's working-days config.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Technical Sketch</h2>
+  <p>
+    The bot is a thin Slack app backed by a scheduled worker. The prompt scheduler fans out per-user
+    jobs based on each member's local check-in time; replies are stored and assembled into the digest.
+  </p>
+  <pre><code>// pseudo: assemble the daily digest
+const replies = await db.replies.forTeam(teamId, today);
+const digest  = replies
+  .sort((a, b) =&gt; a.user.localeCompare(b.user))
+  .map(formatReply)
+  .join("\n\n");
+await slack.postMessage(team.digestChannel, digest);</code></pre>
+  <p class="callout">
+    ⚠️ <strong>Open question:</strong> what happens to the digest if <em>zero</em> people have checked in
+    by delivery time? Skip it silently, or post an empty-state nudge? We have not decided.
+  </p>
+
+  <h2>4. Open Questions</h2>
+  <ul>
+    <li>Should blockers escalate to anyone beyond the team lead after N hours unaddressed?</li>
+    <li>Do we support more than three questions, or is the constraint the point?</li>
+    <li>How do we handle people who are out of office without making them feel like they missed something?</li>
+  </ul>
+
+  <h3>4.1 Pricing (placeholder)</h3>
+  <p>
+    <span class="huge">$TBD</span> per seat per month. The pricing section is a stub — the entire
+    paragraph below this line is intentionally missing and needs to be written before review.
+  </p>
+
+  <h2>5. Inline Style Stress Test</h2>
+  <p>
+    This paragraph mixes typography so highlights can be checked for survival: a
+    <span class="gradient">gradient-clipped phrase</span>, some <span class="tiny">extra-tiny text</span>,
+    a chunk of <span class="huge">very large text</span>, an <a href="https://example.com">inline link</a>,
+    <code>inline_code()</code>, <strong>bold</strong>, <em>italic</em>, and <s>already struck-through</s> text —
+    all in one sentence so a highlight spanning them must still read cleanly.
+  </p>
+
+  <footer class="doc">
+    Orbit internal spec · not for distribution · feedback welcome on every line above.
+  </footer>
+
+</div>
+</body>
+</html>

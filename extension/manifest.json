@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Page Feedback",
+  "version": "1.0.0",
+  "description": "Highlight text on any page to leave comments and strikethrough suggestions, then copy structured feedback (with the page URL) to share.",
+  "permissions": ["activeTab", "scripting"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Add feedback to this page",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}
