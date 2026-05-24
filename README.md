@@ -1,4 +1,4 @@
-# Page Feedback
+# cc-htmlfeedback
 
 A self-contained, dependency-free **in-page feedback tool**. Highlight any text on any page to leave **comments** (yellow highlight) or **strikethrough** suggestions, jot notes, then **copy structured feedback** (including the page URL) to hand back to whoever owns the page.
 
@@ -25,7 +25,7 @@ Built once, shipped four ways — all generated from a single source.
 1. Go to `chrome://extensions`.
 2. Toggle **Developer mode** (top-right) on.
 3. Click **Load unpacked** and select the `extension/` folder.
-4. Pin **Page Feedback** and click its icon on any normal web page. Click again to toggle the panel.
+4. Pin **cc-htmlfeedback** and click its icon on any normal web page. Click again to toggle the panel.
 
 (Browser-internal pages like `chrome://` can't be injected — that's a Chrome restriction.)
 

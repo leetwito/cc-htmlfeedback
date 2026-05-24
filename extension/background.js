@@ -1,4 +1,4 @@
-// Page Feedback — MV3 service worker.
+// cc-htmlfeedback — MV3 service worker.
 // Click the toolbar icon: if the widget isn't on the page yet, inject it and open the panel;
 // if it's already there, just toggle the panel. Uses activeTab (granted on click) — no broad host access.
 
@@ -25,6 +25,6 @@ chrome.action.onClicked.addListener(async (tab) => {
       func: () => { if (window.__fbWidget) window.__fbWidget.open(); }
     });
   } catch (e) {
-    console.error('Page Feedback injection failed:', e);
+    console.error('cc-htmlfeedback injection failed:', e);
   }
 });
