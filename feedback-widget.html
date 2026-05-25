@@ -46,6 +46,22 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 .fb-note{font:14px/1.45 -apple-system,sans-serif;color:#1a1a2e;outline:none;min-height:20px;border:1px dashed #d7dbe6;border-radius:6px;padding:4px 6px}
 .fb-note:focus{border-color:#9fb4e0;background:#fbfcff}
 .fb-note:empty:before{content:attr(data-ph);color:#aab1c4}
+.fb-note-ro{border:none;background:none;padding:0;color:#1a1a2e}
+/* connected mode: status pill, page label, result, banner */
+.fb-status{display:inline-block;margin-bottom:6px;font:700 9px/1.4 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:999px}
+.fb-st-todo{background:#eef1f4;color:#5b6072}
+.fb-st-inprogress{background:#e7f0ff;color:#1257c4}
+.fb-st-done{background:#e3f6ec;color:#1f9d6b}
+.fb-st-error{background:#fdeceb;color:#c0392b}
+.fb-page{font:600 10px/1.3 ui-monospace,Menlo,monospace;color:#8a90a2;margin-bottom:4px;word-break:break-all}
+.fb-result{font:12px/1.4 -apple-system,sans-serif;color:#1f7a52;background:#f1faf5;border-radius:6px;padding:5px 7px;margin-top:6px}
+.fb-card.fb-orphan{opacity:.7}
+.fb-card.fb-orphan .fb-quote:after{content:" · anchor lost";color:#c0392b;font-size:11px}
+.fb-banner{display:flex;align-items:flex-start;gap:6px;background:#eef4ff;border:1px solid #cfe0ff;border-radius:8px;padding:8px 10px;margin-bottom:10px;font:12px/1.45 -apple-system,sans-serif;color:#1a1a2e}
+.fb-banner code{background:#dce8ff;padding:1px 5px;border-radius:4px;font:600 11px/1 ui-monospace,Menlo,monospace}
+.fb-banner span{flex:1}
+.fb-banner button{flex:0 0 auto;border:none;background:transparent;cursor:pointer;color:#1257c4;font-size:13px;padding:0 2px}
+.fb-banner button:hover{color:#0c2f74}
 .fb-x{position:absolute;top:8px;right:8px;width:22px;height:22px;border:none;border-radius:6px;background:#f1f2f7;color:#5b6072;font:700 12px/1 sans-serif;cursor:pointer}
 .fb-x:hover{background:#fdeceb;color:#c0392b}
 #fb-popover{position:absolute;z-index:2147483603;width:256px;background:#fff;border:1px solid #d8dbe6;border-radius:12px;box-shadow:0 12px 32px rgba(20,20,40,.2);padding:10px;display:none}
@@ -116,7 +132,16 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   const FILE   = (function(){ try { return decodeURIComponent(location.href); } catch(e){ return location.href; } })();
   let pending = null, uid = 0, side = 'right', history = [], hpos = -1;
   const store = {};  // id -> { id, quote, context, section, note, type, removed } — single source of truth
-  function visibleItems(){ return Object.values(store).filter(f => !f.removed).sort((a, b) => a.id - b.id); }
+  function visibleItems(){ return Object.values(store).filter(f => !f.removed).sort((a, b) => statusRank(a) - statusRank(b) || a.id - b.id); }
+
+  /* ---- connected mode (companion server injects window.__CCFB) ---- */
+  const CCFB = window.__CCFB || null;
+  const ORDER = { todo:0, 'in-progress':1, error:2, done:3 };
+  function statusOf(f){ return CCFB ? (f.status || 'todo') : null; }
+  function statusRank(f){ return CCFB ? (ORDER[statusOf(f)] ?? 0) : 0; }
+  function ccfbBase(){ return (CCFB && CCFB.endpoint) || ''; }
+  function ccfbPost(t){ return fetch(ccfbBase() + '/__ccfb/tickets', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(t) }); }
+  function shortPage(u){ try { const x = new URL(u); return x.pathname + x.search + x.hash; } catch(e){ return u || ''; } }
 
   const esc = s => (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
@@ -202,6 +227,12 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     const id = ++uid;
     spans.forEach(sp => { sp.className = 'fb-mark' + (type === 'strike' ? ' strike' : ''); sp.dataset.fbId = id; });
     store[id] = { id, quote: pending.quote, context: pending.context, section: pending.section, note: ta.value.trim(), type, removed: false };
+    if (CCFB) {                                  // connected mode: enqueue the ticket for Claude to fix
+      const f = store[id];
+      f.status = 'todo'; f.page = location.href; f.result = ''; f.files = [];
+      ccfbPost({ type, quote: f.quote, context: f.context, section: f.section, note: f.note, page: location.href })
+        .then(r => r.json()).then(t => { f.sid = t.id; }).catch(() => {});
+    }
     pending = null;
     render();
     closePop();
@@ -243,14 +274,34 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 
   /* ---- panel: incremental render + event delegation (a card being edited is never rebuilt) ---- */
   function noteHTML(s){ return esc(s).replace(/\n/g, '<br>'); }
+  function stClass(st){ return 'fb-st-' + st.replace(/[^a-z]/g, ''); }
   function cardHTML(f){
     const q = f.quote.trim() ? esc(f.quote) : '⎵ (insertion point — empty selection)';
+    const st = statusOf(f);
+    const pill = st ? '<span class="fb-status ' + stClass(st) + '">' + st.replace('-', ' ') + '</span>' : '';
+    const pageLbl = (CCFB && f.page) ? '<div class="fb-page" title="' + esc(f.page) + '">' + esc(shortPage(f.page)) + '</div>' : '';
+    // In connected mode the note is the submitted instruction (read-only — refine via a new comment, not by editing).
+    const note = CCFB
+      ? (f.note ? '<div class="fb-note fb-note-ro">' + noteHTML(f.note) + '</div>' : '')
+      : '<div class="fb-note" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-ph="Add a note…">' + noteHTML(f.note) + '</div>';
     return '<button class="fb-x" type="button" title="Discard" aria-label="Discard note">✕</button>' +
+      pill + pageLbl +
       (f.section ? '<div class="fb-sec">' + esc(f.section) + '</div>' : '') +
       '<span class="fb-type ' + f.type + '">' + (f.type === 'strike' ? 'Strikethrough' : 'Comment') + '</span>' +
       '<div class="fb-quote">' + q + '</div>' +
       (f.context ? '<div class="fb-ctx"><b>In:</b> ' + esc(f.context) + '</div>' : '') +
-      '<div class="fb-note" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-ph="Add a note…">' + noteHTML(f.note) + '</div>';
+      note +
+      '<div class="fb-result"></div>';
+  }
+  // Update the mutable bits (status pill, result) on an existing card without rebuilding it.
+  function applyStatus(card, f){
+    if(!CCFB) return;
+    const st = statusOf(f), pill = card.querySelector('.fb-status');
+    if(pill){ pill.className = 'fb-status ' + stClass(st); pill.textContent = st.replace('-', ' '); }
+    const result = card.querySelector('.fb-result');
+    const txt = f.result ? (f.result + (f.files && f.files.length ? ' · ' + f.files.join(', ') : '')) : '';
+    if(result){ result.textContent = txt; result.style.display = txt ? 'block' : 'none'; }
+    card.classList.toggle('fb-orphan', !!f.anchorLost);
   }
   function render(){
     const vis = visibleItems(), want = vis.map(f => f.id);
@@ -264,6 +315,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
         card.innerHTML = cardHTML(f);
       }
       card.className = 'fb-card' + (f.type === 'strike' ? ' strike' : '') + (card.classList.contains('active') ? ' active' : '');
+      applyStatus(card, f);
       if(list.children[i] !== card) list.insertBefore(card, list.children[i] || null);
     });
     countEl.textContent = vis.length;
@@ -367,6 +419,65 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     }
   });
 
+  /* ---- connected mode: load, reconcile, live updates, re-anchor, banner ---- */
+  function reanchor(f){
+    const w = document.createTreeWalker(CONTENT, NodeFilter.SHOW_TEXT, null);
+    let n;
+    while((n = w.nextNode())){
+      if(panel.contains(n) || pop.contains(n) || launch.contains(n)) continue;
+      const idx = n.nodeValue.indexOf(f.quote);
+      if(idx < 0) continue;
+      try {
+        const r = document.createRange();
+        r.setStart(n, idx); r.setEnd(n, idx + f.quote.length);
+        wrap(r, f.id, 'fb-mark' + (f.type === 'strike' ? ' strike' : ''));
+        f.anchorLost = false;
+        return true;
+      } catch(e){ /* overlaps markup — try the next match */ }
+    }
+    f.anchorLost = true;
+    return false;
+  }
+  // Server state is authoritative: merge each ticket into the store by server id (sid),
+  // creating + re-anchoring any we don't have locally yet.
+  function reconcile(tickets){
+    tickets.forEach(t => {
+      let f = Object.values(store).find(x => x.sid === t.id);
+      if(!f){
+        const id = ++uid;
+        f = store[id] = { id, sid: t.id, quote: t.quote || '', context: t.context || '', section: t.section || '',
+          note: t.note || '', type: t.type || 'comment', page: t.page || '', removed: false };
+        if(t.page === location.href && f.quote) reanchor(f);
+      }
+      f.status = t.status; f.result = t.result || ''; f.files = t.files || [];
+    });
+    render();
+  }
+  function loadTickets(){ fetch(ccfbBase() + '/__ccfb/tickets').then(r => r.json()).then(d => reconcile(d.tickets || [])).catch(() => {}); }
+  function subscribeSSE(){
+    try {
+      const es = new EventSource(ccfbBase() + '/__ccfb/events');
+      es.addEventListener('tickets', e => { try { reconcile(JSON.parse(e.data).tickets || []); } catch(_){} });
+      es.addEventListener('reload', () => location.reload());
+    } catch(e){}
+  }
+  function maybeBanner(){
+    let dismissed = false; try { dismissed = !!localStorage.getItem('ccfb-banner-dismissed'); } catch(e){}
+    if(CCFB || dismissed) return;
+    const head = panel.querySelector('.fb-head'); if(!head) return;
+    const b = document.createElement('div'); b.className = 'fb-banner';
+    b.innerHTML = '<span>💡 Want Claude to fix these live? Run <code>/cc-htmlfeedback</code> in Claude Code.</span>' +
+      '<button class="fb-banner-copy" type="button" title="Copy prompt" aria-label="Copy prompt">⧉</button>' +
+      '<button class="fb-banner-x" type="button" title="Dismiss" aria-label="Dismiss banner">✕</button>';
+    head.insertBefore(b, head.firstChild);
+    b.querySelector('.fb-banner-copy').addEventListener('click', function(){
+      const p = 'Run /cc-htmlfeedback to start the live feedback loop for this page.';
+      (navigator.clipboard ? navigator.clipboard.writeText(p) : Promise.reject()).then(function(){ showToast('Prompt copied'); }).catch(function(){ showToast('Copy failed', true); });
+    });
+    b.querySelector('.fb-banner-x').addEventListener('click', function(){ try { localStorage.setItem('ccfb-banner-dismissed','1'); } catch(e){} b.remove(); });
+  }
+
+  if(CCFB){ subscribeSSE(); loadTickets(); } else { maybeBanner(); }
   render();
 })();
 </script>
