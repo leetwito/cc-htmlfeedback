@@ -1,7 +1,7 @@
 # cc-htmlfeedback — live Claude Code feedback loop
 
-**Date:** 2026-05-24
-**Status:** Approved design (pre-implementation)
+**Date:** 2026-05-24 (product requirements refined 2026-05-25)
+**Status:** Approved design (pre-implementation); product requirements locked
 **Topic:** Turn the in-page feedback tool into a live work queue that a Claude Code session drains — comment → fix → hot reload — with the sidebar acting as a todo/in-progress/done board.
 
 ---
@@ -15,14 +15,28 @@ Success criteria:
 - The loop runs inside the developer's existing Claude Code session, started by an explicit trigger.
 - Fixes auto-apply; git is the undo path.
 
+## 1a. Product requirements (v1) — solo dev, open-source
+
+Audience and intent locked with the user (2026-05-25):
+
+- **Audience: a solo developer on their own app.** No author identity, assignment, or multi-user/collaboration concepts. (Built to be published open-source, so: zero project-specific hardcoding, works on any local web app, easy setup, good docs.)
+- **Fix scope: anything (full dev tasks).** A comment is treated as an arbitrary coding task — logic, data, new features, refactors — not just look-and-wording tweaks. This raises power and unpredictability, which is why verification (below) is mandatory.
+- **Timing: immediate, one at a time.** Submitting a comment kicks off its fix right away; tickets are processed sequentially, not batched.
+- **Refinement: leave a new comment.** There is no reply-threading or reopen-to-edit. If a fix is wrong, the user drops a fresh comment (a new ticket); the old ticket stays `done`. Keeps the model dead-simple.
+- **Board: one shared list, full history, persistent.** Every ticket across every page appears in a single list, each labeled with its page. The board **persists across sessions** as a running log (done/closed tickets are kept, not cleared).
+- **`done` means applied *and* verified.** Before flipping a ticket to `done`, the loop verifies the change actually works in the browser (Chrome). A change that doesn't verify stays `in-progress` or goes `error`.
+- **Each `done` card shows a one-line "what changed" summary + the files touched** — a glance-able record, important because full-task fixes are less predictable than cosmetic ones.
+- **Standalone copy-paste mode stays.** The Chrome extension (and bookmarklet/drop-in) keep working with no server — highlight, comment, **Copy feedback**. In that mode a dismissible banner advertises the live path: *ask Claude Code to run `/cc-htmlfeedback`*, with a one-click copy of that prompt. So the tool is useful immediately on install, and the interactive loop is an opt-in upgrade.
+
 ## 2. Two modes (one widget)
 
 The widget gains a transport abstraction selected at load time:
 
-- **Standalone mode** (existing, unchanged): extension / bookmarklet / drop-in. "Submit" → in-memory store + clipboard export. No statuses.
-- **Connected mode** (new): the companion server injects the widget with `window.__CCFB = { endpoint, sessionId }`. "Submit" → POST to the server; status flows back over SSE; the sidebar shows ticket states.
+- **Standalone mode** (existing, **retained**): extension / bookmarklet / drop-in. "Submit" → in-memory store + clipboard export. No statuses. This is the default whenever the widget is not connected to a companion server.
+  - **Upsell banner:** standalone mode shows a small **closable info banner** — e.g. *"💡 Want Claude to fix these live instead of copy-pasting? Ask Claude Code to run `/cc-htmlfeedback`."* — with a **copy-prompt icon** that copies a ready-to-paste prompt/command for the user's Claude Code session. Dismissible (and the dismissal is remembered).
+- **Connected mode** (new): the companion server injects the widget with `window.__CCFB = { endpoint, sessionId }`. "Submit" → POST to the server; status flows back over SSE; the sidebar shows ticket states. Reached by the user running **`/cc-htmlfeedback`** in their Claude Code session (which starts the loop + serves the page in connected mode).
 
-`window.__CCFB` presence is the only switch. All existing standalone behavior is preserved.
+`window.__CCFB` presence is the only switch. All existing standalone behavior is preserved; the banner is hidden in connected mode.
 
 ## 3. Architecture (Approach B — companion server + SSE, file as the contract)
 
@@ -112,13 +126,13 @@ Small Node program (standard library only where feasible), started in the backgr
 ## 6. Widget changes (in `feedback-widget.html`, the canonical source)
 
 - **Transport layer:** a `submit(ticket)` seam. Standalone → store + clipboard (current). Connected → optimistic local card as `todo` + `POST /__ccfb/tickets`.
-- **Status UI:** in connected mode, render a **status pill** per card and group cards under `Todo / In-progress / Done` headers within the existing list (lightweight; not a drag-drop kanban). The header badge counts open (`todo` + `in-progress`).
+- **Status UI:** in connected mode, render a **status pill** per card and group cards under `Todo / In-progress / Done` headers within the existing list (lightweight; not a drag-drop kanban). The header badge counts open (`todo` + `in-progress`). The board is **one shared list across all pages** — each card is labeled with its page — and it shows **full history** persisted across sessions (done/closed tickets remain). A `done` card displays a one-line "what changed" summary and the files touched.
 - **SSE subscription:** in connected mode, subscribe to `/__ccfb/events`; on `tickets` events reconcile card statuses/results; on `reload` events call `location.reload()`.
-- **Re-anchoring on load (connected):** fetch tickets, and for each, re-find its `quote` within the `context`/`section` block and re-wrap the highlight. This is the same text-anchoring logic the "per-URL persistence" feature needs — built once, used by both.
+- **Re-anchoring on load (connected):** fetch tickets; for those whose `page` matches the **current** URL, re-find the `quote` within the `context`/`section` block and re-wrap the highlight. Tickets from **other pages** still appear in the shared board (labeled with their page) but carry no on-page highlight here. This text-anchoring is the same primitive the standalone "per-URL persistence" feature needs — built once, used by both.
   - A `strike` ticket that was applied means the text is gone → re-anchor legitimately fails → expected for `done`.
-  - A `todo`/`in-progress` ticket that fails to re-anchor → shown with an "anchor lost" badge; the ticket remains usable.
+  - A `todo`/`in-progress` ticket on the current page that fails to re-anchor → shown with an "anchor lost" badge; the ticket remains usable.
 
-## 7. Trigger + loop (`/cc-feedback` skill/command)
+## 7. Trigger + loop (`/cc-htmlfeedback` skill/command)
 
 - **`start`:**
   1. Spawn `server.js` (`--root` or `--proxy`) in the background on a chosen port.
@@ -127,22 +141,24 @@ Small Node program (standard library only where feasible), started in the backgr
 - **Loop (~5s cadence):** read new `inbox.jsonl` lines → add to `state.json` as `todo`. For each `todo`:
   1. Set `in-progress` (write `state.json` → server → SSE → sidebar updates live).
   2. Locate the source: grep the `quote` across the served root, disambiguate with `section`/`context`/`page`.
-  3. Apply the edit described by `note`.
-  4. Set `done` with a `result` summary + `files` (source change → server fs.watch → `reload` SSE → page reloads → widget re-anchors).
-  5. On failure: set `error` with a message.
+  3. Apply the edit described by `note` (treated as a full dev task, not just cosmetic).
+  4. **Verify in the browser (Chrome):** confirm the change took effect and the page still works.
+  5. If verified → set `done` with a `result` summary + `files` (source change → server fs.watch → `reload` SSE → page reloads → widget re-anchors). If not fixable or verification fails → set `error` with a message.
 - **`stop`:** kill the server, exit the loop.
 
 ## 8. Ticket lifecycle
 
 ```
-(submitted) --POST--> todo --picked up--> in-progress --fix applied--> done
+(submitted) --POST--> todo --picked up--> in-progress --applied + verified--> done
                                               |
-                                              +--can't fix--> error --(user edits note)--> todo
+                                              +--can't fix / fails verify--> error
 ```
+
+Tickets are never reopened or edited in place. To course-correct, the user leaves a **new comment** (a new ticket); the prior `done`/`error` ticket stays as history.
 
 ## 9. Error handling
 
-- Unfixable/ambiguous ticket → `error` + human-readable message on the card; the user edits the note, which re-submits it as a fresh `todo`.
+- Unfixable/ambiguous ticket, or a change that fails browser verification → `error` + human-readable message on the card. The user course-corrects by leaving a **new comment** (a fresh ticket); the errored ticket stays as history.
 - Re-anchor miss on a non-strike ticket → "anchor lost" badge; ticket stays in the list.
 - Server process dies → the loop health-checks the port and surfaces the failure in the session.
 - Malformed `inbox.jsonl` line → skipped and logged; never crashes the loop.
@@ -155,9 +171,9 @@ Small Node program (standard library only where feasible), started in the backgr
 
 ## 11. v1 scope (YAGNI) / non-goals
 
-**In:** one app + one session + one browser; status pills + grouping; `--root` and `--proxy` modes; best-effort re-anchoring with orphan flagging; localhost, no auth.
+**In:** standalone (copy-paste) mode retained + the upsell banner with copy-prompt; connected mode for **one solo dev, one session, one browser**; full-dev-task fixes; immediate one-at-a-time processing; one shared, page-labeled, cross-session-persistent board; `done` only after browser verification, with a "what changed" + files summary per card; `--root` and `--proxy` modes; best-effort re-anchoring with orphan flagging; localhost, no auth.
 
-**Out (later):** drag-drop kanban; multiple concurrent apps/sessions; auth/remote use; diff-approval gate (we chose auto-apply); analytics; threaded/replies on tickets.
+**Out (later):** drag-drop kanban; multiple concurrent apps/sessions; auth/remote use; diff-approval gate (we chose auto-apply); analytics; reply-threading or reopen/edit of tickets (refinement = new comment); multi-user / authorship / assignment.
 
 ## 12. Shared dependency
 
