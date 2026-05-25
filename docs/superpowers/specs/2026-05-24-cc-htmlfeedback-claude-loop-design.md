@@ -24,7 +24,7 @@ Audience and intent locked with the user (2026-05-25):
 - **Timing: immediate, one at a time.** Submitting a comment kicks off its fix right away; tickets are processed sequentially, not batched.
 - **Refinement: leave a new comment.** There is no reply-threading or reopen-to-edit. If a fix is wrong, the user drops a fresh comment (a new ticket); the old ticket stays `done`. Keeps the model dead-simple.
 - **Board: one shared list, full history, persistent.** Every ticket across every page appears in a single list, each labeled with its page. The board **persists across sessions** as a running log (done/closed tickets are kept, not cleared).
-- **`done` means applied *and* verified.** Before flipping a ticket to `done`, the loop verifies the change actually works in the browser (Chrome). A change that doesn't verify stays `in-progress` or goes `error`.
+- **`done` means applied *and* independently judged.** Before flipping a ticket to `done`, Claude spawns a separate **judge agent** that verifies — in the browser (Chrome) — that the change actually satisfies the comment and the page still works. The judge has its own context (no self-grading bias) and returns a pass/fail verdict; only `pass` → `done`, otherwise → `error` with the judge's reason.
 - **Each `done` card shows a one-line "what changed" summary + the files touched** — a glance-able record, important because full-task fixes are less predictable than cosmetic ones.
 - **Standalone copy-paste mode stays.** The Chrome extension (and bookmarklet/drop-in) keep working with no server — highlight, comment, **Copy feedback**. In that mode a dismissible banner advertises the live path: *ask Claude Code to run `/cc-htmlfeedback`*, with a one-click copy of that prompt. So the tool is useful immediately on install, and the interactive loop is an opt-in upgrade.
 
@@ -142,9 +142,21 @@ Small Node program (standard library only where feasible), started in the backgr
   1. Set `in-progress` (write `state.json` → server → SSE → sidebar updates live).
   2. Locate the source: grep the `quote` across the served root, disambiguate with `section`/`context`/`page`.
   3. Apply the edit described by `note` (treated as a full dev task, not just cosmetic).
-  4. **Verify in the browser (Chrome):** confirm the change took effect and the page still works.
-  5. If verified → set `done` with a `result` summary + `files` (source change → server fs.watch → `reload` SSE → page reloads → widget re-anchors). If not fixable or verification fails → set `error` with a message.
+  4. **Spawn a judge agent** (own context) to verify in Chrome that the change satisfies the comment's intent and the page still works; it returns `{ verdict: "pass"|"fail", reason, evidence }`.
+  5. If `verdict = "pass"` → set `done` with a `result` summary + `files` (source change → server fs.watch → `reload` SSE → page reloads → widget re-anchors). If the fix isn't possible, or the judge returns `"fail"` → set `error` with the judge's `reason`.
 - **`stop`:** kill the server, exit the loop.
+
+## 7a. Judge agent (verification before `done`)
+
+Every ticket is verified by a **separate agent**, not by the worker that made the change — independent context avoids self-grading bias and catches "I think I fixed it" misses.
+
+- **Spawned by:** the loop, after the edit is applied and the page has reloaded.
+- **Inputs:** the ticket (`note` = intent, `quote`, `section`, `page`), the files the worker touched, and the live page URL.
+- **Capabilities:** drives Chrome (`mcp__claude-in-chrome__*`) to inspect the rendered result; **read-only on the code** — it judges, it does not edit.
+- **Task:** decide whether the change satisfies the comment's intent *and* the page is not visibly broken/erroring.
+- **Returns:** `{ verdict: "pass" | "fail", reason, evidence }` (evidence = what it observed: a screenshot note, console state, the relevant DOM text).
+- **Loop reaction:** `pass` → `done` (the judge's confirmation is folded into the card's `result`); `fail` → `error` with the judge's `reason`, so the user sees *why* and can re-comment.
+- **No auto-retry in v1** (YAGNI): a failed judge → `error`; the user refines via a new comment. (Auto-retry-once is a later option.)
 
 ## 8. Ticket lifecycle
 
