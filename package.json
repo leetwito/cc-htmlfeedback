@@ -5,7 +5,9 @@
   "keywords": ["feedback", "annotation", "chrome-extension", "bookmarklet", "review", "highlight"],
   "scripts": {
     "build": "node build.js",
-    "check": "node build.js --check"
+    "check": "node build.js --check",
+    "test": "node --test --test-force-exit",
+    "serve": "node server.js"
   },
   "license": "MIT",
   "private": false

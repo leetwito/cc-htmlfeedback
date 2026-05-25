@@ -5,6 +5,9 @@
 node_modules/
 npm-debug.log*
 
+# cc-htmlfeedback runtime queue (connected mode)
+.cc-htmlfeedback/
+
 # Editor / IDE
 .idea/
 .vscode/
