@@ -219,6 +219,12 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); add('comment'); }
     else if(e.key === 'Backspace' && ta.value === ''){ e.preventDefault(); add('strike'); }
     else if(e.key === 'Escape'){ e.preventDefault(); hidePop(); }
+    // When the box is empty, cmd/ctrl+C copies the originally-selected page text
+    // (the popover stole focus + cleared the selection, so the native copy has nothing).
+    else if((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C') && !ta.value && pending && pending.quote){
+      e.preventDefault();
+      navigator.clipboard.writeText(pending.quote).then(() => showToast('Selected text copied')).catch(() => showToast('Copy failed', true));
+    }
   });
 
   function add(type){
