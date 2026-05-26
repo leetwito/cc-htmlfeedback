@@ -32,6 +32,26 @@ Built once, shipped four ways — all generated from a single source.
 ### Try it without installing
 Open `test.html` (a sample document with varied headings, lists, tables, and styled text) in your browser and load the extension — or just paste the contents of `dist/feedback-widget.js` into the DevTools console on that page. It's the manual test fixture used to exercise every feature.
 
+## Connected mode — live fixes with Claude Code
+
+Standalone mode (above) is **export**: you copy structured feedback and paste it wherever. **Connected mode** removes the copy-paste — comments become a live work queue that your Claude Code session drains: comment → Claude edits the source → the page hot-reloads → a judge agent verifies → the ticket flips to **done**. The sidebar becomes a `todo / in-progress / done` board (one shared list across pages, persisted across sessions).
+
+**Start it** in the Claude Code session for your project:
+
+```
+/cc-htmlfeedback                     # serve the current dir (static) on :4317
+/cc-htmlfeedback http://localhost:5173   # or proxy your existing dev server (keeps its HMR)
+/cc-htmlfeedback stop                # stop the loop + server
+```
+
+This starts the companion server (`server.js`), opens your app in Chrome with the widget injected and connected, and puts the session into a listening loop. Highlight anything, write what you want changed, submit — and watch the ticket go `todo → in-progress → done` as Claude applies and verifies the fix. Git is the undo path.
+
+- **How it talks:** the widget POSTs each comment to the server, which appends it to `.cc-htmlfeedback/inbox.jsonl`. The session owns `.cc-htmlfeedback/state.json` (the board); the server relays state + reload events to the browser over SSE. (Both files are gitignored.)
+- **The judge:** before any ticket is marked `done`, a separate agent opens the page in Chrome and independently verifies the change satisfies the comment and nothing broke — `pass` → done, `fail` → error with the reason.
+- **Standalone still works:** with no server, the extension/bookmarklet behave exactly as before, and a dismissible banner offers a one-click prompt to start the live loop.
+
+Run `node server.js --help`-style flags directly if you prefer: `--root <dir>`, `--proxy <url>`, `--port <n>`.
+
 ## Develop / build
 `feedback-widget.html` is the **single source of truth** (style + markup + script). After editing it, regenerate everything:
 
@@ -49,10 +69,16 @@ node build.js --check   # or: npm run check — exits non-zero on drift, writes 
 
 ## Structure
 ```
-feedback-widget.html      ← canonical source (edit this)
+feedback-widget.html      ← canonical source for the widget (edit this)
 build.js                  ← regenerates dist/ + extension/feedback-widget.js (node build.js [--check])
-package.json              ← npm run build / npm run check
+package.json              ← npm run build / check / test / serve
 test.html                 ← manual test fixture (sample document)
+server.js                 ← connected-mode companion server (--root | --proxy, REST + SSE + file-watch)
+lib/
+  queue.js                  inbox.jsonl append / state.json read (the file contract)
+  inject.js                 widget injection into served HTML
+  watch-inbox.js            event-driven "block until a new ticket" for the loop
+test/                     ← node:test suites (queue, inject, server, watch-inbox)
 dist/
   feedback-widget.js        drop-in script
   feedback-bookmarklet.txt  javascript: URL
@@ -63,6 +89,9 @@ extension/
   background.js             service worker: inject-or-toggle
   feedback-widget.js        synced from dist
   icons/                    icon.svg + icon16/48/128.png
+.claude/skills/cc-htmlfeedback/
+  SKILL.md                  the /cc-htmlfeedback loop (drain tickets → fix → reload → judge → done)
+  judge-prompt.md           independent verification agent prompt
 ```
 
 ## Notes

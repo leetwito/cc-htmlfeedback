@@ -15,7 +15,7 @@ const MIME = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css',
   '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png',
   '.ico':'image/x-icon', '.woff2':'font/woff2', '.map':'application/json' };
 
-function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID(), widgetPath } = {}) {
+function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID(), widgetPath, proxy } = {}) {
   fs.mkdirSync(queueDir, { recursive: true });
   root = path.resolve(root);
   widgetPath = widgetPath || path.join(__dirname, 'extension', 'feedback-widget.js');
@@ -26,6 +26,33 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
     for (const res of sseClients) { try { res.write(payload); } catch {} }
   }
   function sendJSON(res, code, obj){ res.writeHead(code, {'content-type':'application/json'}); res.end(JSON.stringify(obj)); }
+
+  // --proxy: forward to an existing dev server, injecting the widget into HTML responses
+  // (so the upstream's own HMR keeps working). /__ccfb/* is always handled locally.
+  function proxyRequest(req, res){
+    const lib = proxy.startsWith('https:') ? require('node:https') : require('node:http');
+    const target = new URL(req.url, proxy);
+    const headers = Object.assign({}, req.headers, { host: target.host, 'accept-encoding': 'identity' });
+    const up = lib.request(target, { method: req.method, headers }, upRes => {
+      const ct = upRes.headers['content-type'] || '';
+      if (ct.includes('text/html')) {
+        const chunks = [];
+        upRes.on('data', c => chunks.push(c));
+        upRes.on('end', () => {
+          const html = injectWidget(Buffer.concat(chunks).toString('utf8'), sessionId);
+          const h = Object.assign({}, upRes.headers);
+          delete h['content-length']; delete h['content-encoding']; delete h['transfer-encoding'];
+          res.writeHead(upRes.statusCode, h);
+          res.end(html);
+        });
+      } else {
+        res.writeHead(upRes.statusCode, upRes.headers);
+        upRes.pipe(res);
+      }
+    });
+    up.on('error', e => { res.writeHead(502); res.end('cc-htmlfeedback proxy error: ' + e.message); });
+    req.pipe(up);
+  }
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -57,6 +84,8 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       req.on('close', () => sseClients.delete(res));
       return;
     }
+
+    if (proxy) return proxyRequest(req, res);
 
     // static file serving with HTML injection
     let rel = decodeURIComponent(p);
@@ -112,11 +141,13 @@ if (require.main === module) {
   const { values } = require('node:util').parseArgs({ options: {
     root: { type:'string', default:'.' },
     port: { type:'string', default:'4317' },
+    proxy: { type:'string' },
   }});
-  const root = path.resolve(values.root);
+  const root = path.resolve(values.root);          // still watched for reload, even in proxy mode
   const queueDir = path.join(root, QUEUE_DIR);
-  startServer({ root, queueDir, port: Number(values.port) }).then(h => {
-    console.log(`cc-htmlfeedback server on http://127.0.0.1:${h.port} (root: ${root})`);
+  startServer({ root, queueDir, port: Number(values.port), proxy: values.proxy }).then(h => {
+    const how = values.proxy ? `proxy → ${values.proxy}` : `root: ${root}`;
+    console.log(`cc-htmlfeedback server on http://127.0.0.1:${h.port} (${how})`);
   });
 }
 

@@ -41,6 +41,36 @@ test('serves root HTML with widget injected, and POST appends a ticket', async (
   }
 });
 
+test('--proxy injects the widget into upstream HTML and passes other content through', async () => {
+  const http = require('node:http');
+  // stub upstream dev server
+  const upstream = http.createServer((req, res) => {
+    if (req.url === '/app.js') { res.writeHead(200, {'content-type':'text/javascript'}); return res.end('console.log(1)'); }
+    res.writeHead(200, {'content-type':'text/html'}); res.end('<html><body>UPSTREAM</body></html>');
+  });
+  await new Promise(r => upstream.listen(0, '127.0.0.1', r));
+  const upPort = upstream.address().port;
+
+  const root = tmpRoot();
+  const queueDir = path.join(root, '.cc-htmlfeedback');
+  const srv = await startServer({ root, queueDir, port: 0, sessionId: 'SID', widgetPath: __filename, proxy: `http://127.0.0.1:${upPort}` });
+  const base = `http://127.0.0.1:${srv.port}`;
+  try {
+    const html = await (await fetch(base + '/')).text();
+    assert.ok(html.includes('UPSTREAM'), 'served upstream HTML');
+    assert.ok(html.includes('/__ccfb/widget.js'), 'widget injected into proxied HTML');
+
+    const js = await (await fetch(base + '/app.js')).text();
+    assert.equal(js, 'console.log(1)', 'non-HTML passes through untouched');
+
+    // /__ccfb/* stays local even in proxy mode
+    const state = await (await fetch(base + '/__ccfb/tickets')).json();
+    assert.deepEqual(state, { version: 1, tickets: [] });
+  } finally {
+    srv.close(); upstream.close();
+  }
+});
+
 test('SSE pushes a tickets event when state.json changes', async () => {
   const root = tmpRoot();
   const queueDir = path.join(root, '.cc-htmlfeedback');
