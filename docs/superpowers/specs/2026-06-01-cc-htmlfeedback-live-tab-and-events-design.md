@@ -26,7 +26,7 @@ every visible change to ticket status, isolate validation, and make the loop wak
 only on real events.
 
 Non-goals: multi-app / multi-session support; previewing non-deletion edits
-(reword, restyle) before they land — those simply appear at the `done` reload.
+(reword, restyle) before they land — those simply appear at the `done` morph.
 
 ## Ticket lifecycle (the user's live tab)
 
@@ -35,12 +35,13 @@ Non-goals: multi-app / multi-session support; previewing non-deletion edits
 | comment submitted     | strikethrough (strike type) or marker (comment type) appears immediately; ticket created `todo` |
 | `todo`                | no further DOM change                                             |
 | `in-progress`         | no DOM change (only the panel status pill updates)               |
-| `done`                | **lazy full reload** → tab now shows the real, verified source   |
+| `done`                | **DOM morph** (static mode) / upstream HMR (proxy mode) → tab now shows the real, verified source, with scroll/focus/state preserved; no reload |
 | `error`               | no DOM change; stays counted as outstanding                      |
 
 The immediate-strikethrough-on-submit behavior already exists and is unchanged.
 The **only** DOM mutation to the page itself, across a ticket's whole life, is the
-single reload at `done`.
+single morph at `done` (see Change 2). There is **no full page reload at any point** —
+`location.reload()` is removed entirely, not kept as a fallback.
 
 ## Change 1 — counter shows non-done tickets
 
@@ -60,37 +61,62 @@ used both for the rendered list and the count. Introduce an `outstandingCount`
 (filter `visibleItems()` by `statusOf(f) !== 'done'`) for the badge/count, while the
 list keeps rendering all `visibleItems()`.
 
-## Change 2 — lazy reload tied to `done` (with restore + defer)
+## Change 2 — apply the change on `done` via DOM morphing (no reload, ever)
 
-**File:** `feedback-widget.html` (SSE handlers + `reconcile()`).
+**Files:** `feedback-widget.html` (SSE handlers + `reconcile()`), plus an inlined copy
+of [Idiomorph](https://github.com/bigskysoftware/idiomorph) in the widget source.
 
-1. **Stop reloading on file change.** The `reload` SSE listener must no longer call
-   `location.reload()`. File saves by the worker no longer touch the user's tab.
-   (The server may keep emitting the event; the widget ignores it for the live tab.)
-2. **Reload on `done` transition.** In `reconcile()`, when a ticket's status changes
-   *into* `done` (was not `done` before this reconcile, is `done` now), schedule a
-   reload of the user's tab. The `done` status is written by the worker only after
-   the source edit is saved and the judge passes, so the reload always loads the
-   final, verified file.
-3. **Restore position (best-effort).** Before reloading, persist `window.scrollY`
-   (and `scrollX`) to `sessionStorage`; on load, restore them. `location.hash` is
-   left intact (most slide frameworks, e.g. reveal.js, track the current slide via
-   the hash, which the browser preserves across `location.reload()`), so the current
-   slide is restored for hash-based decks. Restoration is best-effort: if the DOM
-   changed enough that the saved offset is meaningless, we simply land at top.
-4. **Defer while composing.** If the comment composer (`#fb-text`) or a card note
-   (contentEditable) is focused, or the composer has unsaved text, do **not** reload.
-   Set a `pendingReload` flag and a one-shot listener; perform the reload when the
-   composer/note blurs or closes. Multiple `done`s while composing collapse into a
-   single pending reload.
+The general technique for "apply a change to a live page with minimal interference" is
+**DOM morphing**: fetch the updated HTML, diff it against the live DOM, and patch only
+the nodes that actually changed — leaving scroll, focus, input values, media, and
+untouched JS state in place. This is what Turbo 8 / Hotwire adopted for smooth page
+refreshes. We use **Idiomorph** (Turbo switched to it from morphdom; on-by-default
+`restoreFocus`; dependency-free and tiny, so it is **inlined into the widget** — the
+widget stays self-contained). `location.reload()` is removed entirely — not a fallback.
+
+The update path depends on the serving mode (see "Static vs proxy mode" below):
+
+### Static mode (`--root`) — the widget morphs
+
+1. **Ignore file-change events.** The `reload` SSE listener must no longer call
+   `location.reload()`. Worker file saves do not touch the user's tab on their own.
+2. **Morph on `done` transition.** In `reconcile()`, when a ticket changes *into*
+   `done` (was not `done` before, is now), fetch the served page URL (cache-busted),
+   parse it, and morph the live `<body>`:
+   ```
+   Idiomorph.morph(document.body, newBodyHTML, {
+     morphStyle: 'innerHTML', restoreFocus: true, ignoreActiveValue: true,
+     callbacks: { /* skip the widget's own nodes — see below */ }
+   })
+   ```
+   `done` is written by the worker only after the edit is saved and the judge passes,
+   so the fetched HTML is always the final, verified source.
+3. **Protect the widget's own DOM.** The widget's injected nodes (`#fb-panel`,
+   `#fb-launch`, `#fb-toast`, `#fb-popover`) and the runtime `.fb-mark` spans are NOT
+   in the served source, so a naïve morph would delete them. Before morphing, **unwrap
+   all `.fb-mark` spans** (restore plain text); use `beforeNodeRemoved`/​
+   `beforeNodeMorphed` returning `false` to skip the widget root nodes; after morphing,
+   **re-anchor** marks for still-open tickets via the existing `reanchor()`. Marks are
+   a projection of open tickets onto the DOM, recomputed after each structural change.
+4. **Defer while composing.** If the comment composer (`#fb-text`) or a card note is
+   focused / has unsaved text, set a `pendingMorph` flag and morph on blur/close.
+   `ignoreActiveValue` additionally protects the focused field during a morph.
+5. **On morph failure.** Log a console warning and leave the page as-is. The edit is
+   safely in the file and appears on the user's next manual navigation. Never hard-reload.
+
+### Proxy mode (`--proxy`) — defer to the upstream dev server's HMR
+
+The wrapped dev server (e.g. Vite) already hot-updates the page over its own channel.
+The widget does **not** morph or reload on `done`; it only updates the panel's status
+pills and counter. Morphing here would fight the upstream HMR.
 
 Edge cases:
-- After the reload, `reconcile()` + `reanchor()` rebuild marks from server state:
-  still-open strike tickets re-anchor (their text is still present); a `done`
-  removal finds no anchor (text gone) and shows no mark — correct.
-- If several tickets finish close together, each `done` requests a reload; a reload
-  already in flight (or a single `pendingReload`) absorbs the rest — at most one
-  reload per "batch."
+- Morphing preserves the current presentation slide / scroll / focus *inherently*
+  (it doesn't reload), so no hash- or framework-specific logic is needed.
+- A `done` removal: the struck text is gone in the new HTML, so the morph removes it
+  and its (already unwrapped) mark does not re-anchor — correct.
+- Several tickets finishing close together: coalesce into one morph (a morph already
+  scheduled / `pendingMorph` absorbs the rest); a single fetch reflects all saved edits.
 
 ## Change 3 — judge validates in a separate tab/window
 
@@ -129,9 +155,10 @@ node $TOOLING/lib/watch-inbox.js <QUEUE> <currentInboxLineCount> 1800000   # run
 
 ## Files touched
 
-- `feedback-widget.html` — counter (Change 1), SSE/reload logic (Change 2). This is
-  the built widget source; if `extension/feedback-widget.js` / `dist/` are produced
-  from it via `build.js`, rebuild after editing.
+- `feedback-widget.html` — counter (Change 1), SSE handling + morph-on-`done` and the
+  inlined Idiomorph source (Change 2). This is the built widget source; rebuild
+  `extension/feedback-widget.js` + `dist/*` via `node build.js` after editing. Note the
+  build's size budget / `--check` may need updating for the inlined Idiomorph (~a few KB).
 - `~/.claude/skills/cc-htmlfeedback/SKILL.md` — judge isolation (Change 3),
   background watcher (Change 4).
 - `~/.claude/skills/cc-htmlfeedback/judge-prompt.md` — new-tab instruction (Change 3).
@@ -139,13 +166,18 @@ node $TOOLING/lib/watch-inbox.js <QUEUE> <currentInboxLineCount> 1800000   # run
 ## Verification
 
 Per the project's testing rule, the loop must be exercised end-to-end in Chrome:
-1. Serve a multi-section/slide page, open it as the user's tab, scroll/navigate.
+1. Serve a multi-section/scrollable page (static mode), open it as the user's tab,
+   scroll down and focus somewhere.
 2. Submit a strike comment → strikethrough appears immediately, badge increments,
-   ticket `todo`. No reload through `todo`/`in-progress`.
-3. Worker applies the edit; judge runs in a **separate** tab; on `done` the user's
-   tab reloads once, scroll/slide restored, text actually removed, badge decrements.
+   ticket `todo`. No DOM change through `todo`/`in-progress`.
+3. Worker applies the edit; judge runs in a **separate** tab; on `done` the user's tab
+   **morphs** (no reload) — struck text actually removed, scroll position and focus
+   preserved, badge decrements.
 4. With all tickets `done`, badge reads `0`.
-5. While idle, confirm the session produces no ~60s wake turns and wakes promptly on
+5. Confirm the widget's own panel/marks survive the morph (not deleted).
+6. While idle, confirm the session produces no ~60s wake turns and wakes promptly on
    the next comment.
-6. Submit a comment while typing in the composer → confirm a concurrent `done` defers
-   its reload until the composer closes.
+7. Submit a comment while typing in the composer → confirm a concurrent `done` defers
+   its morph until the composer closes.
+8. Proxy mode (wrap a Vite dev server): confirm the widget does **not** morph on `done`
+   and lets Vite's HMR update the page; panel status/counter still update.
