@@ -130,7 +130,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   const copyBtn= document.getElementById('fb-copy');
   const quickCopy = document.getElementById('fb-quickcopy');
   const FILE   = (function(){ try { return decodeURIComponent(location.href); } catch(e){ return location.href; } })();
-  let pending = null, uid = 0, side = 'right', history = [], hpos = -1;
+  let pending = null, uid = 0, side = 'right', sideManual = false, history = [], hpos = -1;
   const store = {};  // id -> { id, quote, context, section, note, type, removed } — single source of truth
   function visibleItems(){ return Object.values(store).filter(f => !f.removed).sort((a, b) => statusRank(a) - statusRank(b) || a.id - b.id); }
 
@@ -184,14 +184,28 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     }, 0);
   });
 
+  // Open the popover toward the page center on BOTH axes so it never pushes layout
+  // or runs off-screen: leftward from a right-side selection (and vice-versa), and
+  // above a selection near the bottom (below one near the top). rect is viewport-
+  // relative (getBoundingClientRect); the popover is absolute, so add scroll at the end.
   function place(rect){
-    const w = pop.offsetWidth;
-    let left = side === 'left' ? (window.scrollX + rect.right - w) : (window.scrollX + rect.left);
-    const top = window.scrollY + rect.bottom + 8;
-    const maxLeft = window.scrollX + document.documentElement.clientWidth - w - 12;
-    left = Math.max(window.scrollX + 8, Math.min(left, maxLeft));
-    pop.style.left = left + 'px';
-    pop.style.top  = top + 'px';
+    const dw = document.documentElement.clientWidth;   // viewport (excludes scrollbar)
+    const dh = document.documentElement.clientHeight;
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    const M = 8, GAP = 8;                               // viewport margin, gap from selection
+
+    const autoSide = (rect.left + rect.width / 2) > dw / 2 ? 'left' : 'right';
+    const useSide = sideManual ? side : autoSide;       // ⇄ button overrides the auto choice
+    let left = useSide === 'left' ? (rect.right - w) : rect.left;
+    left = Math.max(M, Math.min(left, dw - w - M));
+
+    const fitsBelow = rect.bottom + GAP + h <= dh - M;
+    const fitsAbove = rect.top - GAP - h >= M;
+    let top = (fitsBelow || !fitsAbove) ? (rect.bottom + GAP) : (rect.top - GAP - h);
+    top = Math.max(M, Math.min(top, dh - h - M));
+
+    pop.style.left = (window.scrollX + left) + 'px';
+    pop.style.top  = (window.scrollY + top) + 'px';
   }
   function showPop(range){
     clearPending();
@@ -203,13 +217,14 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     pop.style.display = 'block';
     ta.value = '';
     place(rect);
-    ta.focus();
+    ta.focus({ preventScroll: true });   // don't let focus auto-scroll the page (the "jump")
   }
   function clearPending(){ unwrap('pending'); pending = null; }
   function closePop(){ pop.style.display = 'none'; }
-  function hidePop(){ closePop(); clearPending(); }
+  function hidePop(){ closePop(); clearPending(); sideManual = false; }   // each new selection re-auto-orients
 
   document.getElementById('fb-side').addEventListener('click', () => {
+    sideManual = true;                                   // user took manual control of the side
     side = side === 'right' ? 'left' : 'right';
     if(pending && pending.rect) place(pending.rect);
   });
