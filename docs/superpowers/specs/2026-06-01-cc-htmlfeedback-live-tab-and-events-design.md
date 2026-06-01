@@ -66,7 +66,7 @@ Statuses: `todo → in-progress → done` (or `error`). Refinement is a *new* co
 |-------------------|----------------------------------------------------------------------------------|
 | comment submitted | strikethrough (strike) or marker (comment) appears immediately; ticket `todo`    |
 | `todo`            | no further DOM change                                                            |
-| `in-progress`     | no DOM change (only the panel status pill updates)                               |
+| `in-progress`     | no content/structural change; the existing mark gains a subtle "working" animation (Change 11); panel status pill updates |
 | `done`            | **DOM morph** (static) / upstream **HMR** (proxy) → verified change shown, scroll/focus/state preserved; **no reload, ever** |
 | `error`           | no DOM change; stays counted as outstanding                                      |
 
@@ -204,9 +204,25 @@ typing is unaffected. Caveat: hosts that bind global keys in the *capture* phase
 `document`/`window` (rare) won't be blocked by bubble-phase stopping; documented as a known
 limitation, acceptable for the common case (reveal.js and most decks listen in bubble).
 
+## Change 11 — "working" animation on in-progress marks
+
+**File:** `feedback-widget.html` (CSS + the per-status mark update).
+
+While a ticket is `in-progress`, its on-page mark (the `.fb-mark` highlight or
+`.fb-mark.strike` strikethrough) shows a subtle loading animation so the user can see an
+agent is actively working on that exact text. Implementation: toggle a `.fb-working` class
+on the content mark span(s) for that ticket id whenever `statusOf(f) === 'in-progress'`,
+and remove it on any other status. CSS animates `.fb-working` as a gentle pulsing shimmer
+(e.g. an animated background-position gradient or pulsing opacity) — **no layout shift, no
+color change to the underlying text**, and wrapped in `@media (prefers-reduced-motion:
+reduce)` to fall back to a static tint. Marks are re-derived on morph/re-anchor, so the
+class is applied during `render()`/`applyStatus()` from the ticket's current status (not
+stored on the node). This is purely decorative and additive — it does not alter page
+content (which still changes only at `done`).
+
 ## Files touched (summary)
 
-- `feedback-widget.html` — Changes 1, 2, 8, 9, 10 (+ inlined Idiomorph); rebuild via
+- `feedback-widget.html` — Changes 1, 2, 8, 9, 10, 11 (+ inlined Idiomorph); rebuild via
   `node build.js`, verify `node build.js --check`. Built artifact `extension/feedback-widget.js` is what the server serves.
 - `lib/queue.js` — per-page path helpers + board shape (Changes 6, 7).
 - `lib/inject.js` — `mode` flag in `__CCFB` (Change 2 proxy/static branch).
@@ -221,18 +237,20 @@ limitation, acceptable for the common case (reveal.js and most decks listen in b
 
 1. Serve a dir with ≥2 HTML files; open each in its own tab (multi-file).
 2. Comment on both pages → strikethrough/marker appears immediately; per-page badges
-   increment; per-page boards created under `pages/<pagekey>/`. No DOM change through
-   `todo`/`in-progress`.
+   increment; per-page boards created under `pages/<pagekey>/`. No content change through
+   `todo`/`in-progress` (the in-progress "working" animation is the only mark change).
 3. Worker fixes both pages **concurrently** (parallel subagents); judge runs in a separate
    tab per ticket; on each `done` the relevant tab **morphs** (no reload) — text changed,
    scroll/focus preserved, widget + open-ticket marks survive.
-4. All `done` on a page → its badge `0`; `done` tickets sit in the collapsed Done section.
-5. Collapsible sections: Done starts collapsed; toggling persists across re-renders.
-6. Clean button on page A → page A board empties (inbox + tasks truncated, marks gone);
+4. While a ticket is `in-progress`, its on-page mark shows the pulsing "working" animation;
+   it stops when the ticket leaves `in-progress`. (Reduced-motion → static tint.)
+5. All `done` on a page → its badge `0`; `done` tickets sit in the collapsed Done section.
+6. Collapsible sections: Done starts collapsed; toggling persists across re-renders.
+7. Clean button on page A → page A board empties (inbox + tasks truncated, marks gone);
    page B untouched.
-7. Idle: no ~60s wake turns; the session wakes promptly on the next comment on any page.
-8. Compose a comment while a ticket finishes → that page's morph defers until the composer
+8. Idle: no ~60s wake turns; the session wakes promptly on the next comment on any page.
+9. Compose a comment while a ticket finishes → that page's morph defers until the composer
    closes.
-9. Startup: re-run `/cc-htmlfeedback` with leftover non-done tickets → it summarizes them
-   grouped by page+status and offers resume / explain-errors / clean.
-10. Proxy mode: widget does not morph; upstream HMR updates the page; panel/badge update.
+10. Startup: re-run `/cc-htmlfeedback` with leftover non-done tickets → it summarizes them
+    grouped by page+status and offers resume / explain-errors / clean.
+11. Proxy mode: widget does not morph; upstream HMR updates the page; panel/badge update.
