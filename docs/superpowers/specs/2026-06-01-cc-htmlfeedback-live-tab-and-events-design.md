@@ -118,6 +118,29 @@ Edge cases:
 - Several tickets finishing close together: coalesce into one morph (a morph already
   scheduled / `pendingMorph` absorbs the rest); a single fetch reflects all saved edits.
 
+### Why morphing and not "just use Vite's HMR"
+
+Explored and rejected as a *replacement* for morphing (it remains the proxy-mode path):
+
+- **Primary target is static** — the tool is mainly run on static HTML, decks, and
+  exported sites that have **no dev server at all**, so Vite simply does not apply to
+  the main use case. Morphing is the core mechanism, not a fallback.
+- **Vite full-reloads on HTML/content edits.** Vite HMR is module-based: plain HTML /
+  `index.html` edits "trigger a full page reload because they're not modules that can be
+  hot-updated." The worker's typical edits (remove/reword text in markup) are exactly
+  this — so Vite would re-introduce the full reload we are eliminating.
+- **No HMR boundary → full reload.** A module hot-updates only behind
+  `import.meta.hot.accept(`; otherwise the update bubbles up and Vite falls back to a
+  full reload. Content edits aren't behind accept boundaries.
+- **Vite doesn't morph the DOM.** State-preserving updates in a Vite app come from a
+  *framework* plugin (React Fast Refresh / Vue SFC / Svelte), not Vite itself, and only
+  for component edits. Vite provides the transport, not a DOM-preserving apply.
+
+Net: Vite preserves state only for framework-component edits with HMR boundaries — which
+**proxy mode already leverages** (we defer to it and don't morph). For static pages and
+content edits (the majority case here), morphing is the only thing that delivers the
+no-reload requirement. So the two modes are complementary, not competing.
+
 ## Change 3 — judge validates in a separate tab/window
 
 **Files:** `~/.claude/skills/cc-htmlfeedback/SKILL.md`, `judge-prompt.md`.
