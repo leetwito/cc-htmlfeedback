@@ -1,206 +1,238 @@
-# cc-htmlfeedback — live-tab non-interference & event-driven loop
+# cc-htmlfeedback — live-tab, multi-file, event-driven loop (v2)
 
 **Date:** 2026-06-01
 **Status:** Approved (design) — pending implementation plan
 
 ## Problem
 
-The current loop interferes with the user while they keep using the same page to
-comment and navigate (e.g. a presentation), and it re-evaluates on a 60-second
-timer even when idle:
+The loop interferes with the user while they keep using the same page to comment and
+navigate, polls on a 60-second timer, supports only one file, splits its data across
+two opaquely-named files, and never surfaces leftover work. v2 makes the live tab
+non-interfering, supports many files worked concurrently in one session, makes the loop
+event-driven, and improves the widget UX and startup behavior.
 
-1. The counter badge counts every non-discarded ticket, so finishing a task never
-   reduces it — completing everything does not return the badge to `0`.
-2. Every source-file save triggers a full `location.reload()` in the user's tab
-   (via the `reload` SSE event), wiping scroll position, the current presentation
-   slide, the open comment composer, and undo history.
-3. Nothing guarantees the verification judge opens a *separate* tab; it can reload
-   or navigate the user's live tab.
-4. The worker waits with a foreground `watch-inbox.js` call that times out every
-   60s, burning a Claude turn (and tokens) on every idle minute.
+## Goals & non-goals
 
-## Goals
+**Goals:** the user's live tab is never disturbed mid-work; visible changes are tied to
+ticket status; validation is isolated to a separate tab; the loop wakes only on real
+events; one session handles many files concurrently; the widget UI is organized and
+resettable; startup surfaces outstanding work.
 
-Make the user's live tab a "sacred" surface that is never disturbed mid-work, tie
-every visible change to ticket status, isolate validation, and make the loop wake
-only on real events.
+**Non-goals:** previewing non-deletion edits (reword/restyle) before they land — those
+appear at the `done` morph; multiple independent sessions/servers (we use one session,
+many tabs); cross-machine/remote use.
 
-Non-goals: multi-app / multi-session support; previewing non-deletion edits
-(reword, restyle) before they land — those simply appear at the `done` morph.
+## Architecture overview
+
+One companion server (`server.js`) serves the user's files (static `--root`, or `--proxy`
+wrapping a dev server) and injects the widget. The user opens **multiple files, one
+browser tab each**. All feedback flows through a **per-page** queue under
+`<servedRoot>/.cc-htmlfeedback/`. One Claude **worker session** drains the queue, fixing
+independent files **concurrently** via parallel subagents. The judge validates in its own
+tab. The user's tabs are never reloaded — verified changes are applied by **DOM morphing**
+(static) or deferred to the upstream **HMR** (proxy).
+
+### Per-page queue layout
+
+```
+<servedRoot>/.cc-htmlfeedback/
+  index.json                      # { "<pagekey>": { page, file }, ... } — written by the server
+  pages/<pagekey>/
+    feedback_inbox.jsonl          # append-only, SERVER-written: raw incoming comments for this page
+    feedback_tasks.json           # the board for this page, WORKER-written: { version, page, file, tickets:[...] }
+```
+
+- `pagekey = sha1(pageURL).slice(0,12)` (stable, collision-safe, filesystem-safe). The
+  human-readable `page` (full URL) and `file` (root-relative path) live in `index.json`
+  and inside each `feedback_tasks.json`.
+- **Single-writer-per-file** is preserved and now also isolates files from each other:
+  the server only ever *appends* to a page's `feedback_inbox.jsonl`; the worker is the
+  only writer of each `feedback_tasks.json`. Two subagents fixing two different files
+  write two different board files → concurrent fixes are race-free by construction.
+
+### Why `feedback_inbox.jsonl` + `feedback_tasks.json` (the rename)
+
+`inbox.jsonl` → `feedback_inbox.<page>.jsonl` (server-owned intake channel) and
+`state.json` → `feedback_tasks.json` (worker-owned board). The two-file split is the
+lock: the server (handling browser POSTs) and the worker (a Claude session editing files)
+run concurrently; append-only intake + single-writer board avoids cross-process clobber.
+They are **not** merged into one file — that would reintroduce the two-writer race.
+
+Statuses: `todo → in-progress → done` (or `error`). Refinement is a *new* comment.
 
 ## Ticket lifecycle (the user's live tab)
 
-| Transition            | DOM in the user's tab                                              |
-|-----------------------|-------------------------------------------------------------------|
-| comment submitted     | strikethrough (strike type) or marker (comment type) appears immediately; ticket created `todo` |
-| `todo`                | no further DOM change                                             |
-| `in-progress`         | no DOM change (only the panel status pill updates)               |
-| `done`                | **DOM morph** (static mode) / upstream HMR (proxy mode) → tab now shows the real, verified source, with scroll/focus/state preserved; no reload |
-| `error`               | no DOM change; stays counted as outstanding                      |
+| Transition        | DOM in the user's tab                                                            |
+|-------------------|----------------------------------------------------------------------------------|
+| comment submitted | strikethrough (strike) or marker (comment) appears immediately; ticket `todo`    |
+| `todo`            | no further DOM change                                                            |
+| `in-progress`     | no DOM change (only the panel status pill updates)                               |
+| `done`            | **DOM morph** (static) / upstream **HMR** (proxy) → verified change shown, scroll/focus/state preserved; **no reload, ever** |
+| `error`           | no DOM change; stays counted as outstanding                                      |
 
-The immediate-strikethrough-on-submit behavior already exists and is unchanged.
-The **only** DOM mutation to the page itself, across a ticket's whole life, is the
-single morph at `done` (see Change 2). There is **no full page reload at any point** —
-`location.reload()` is removed entirely, not kept as a fallback.
+---
 
-## Change 1 — counter shows non-done tickets
+## Change 1 — counter shows only non-done tickets
 
 **File:** `feedback-widget.html` (`render()`).
 
-The badge (`#fb-launch .fb-badge`), the panel count (`#fb-count` "N notes"), the
-`has` class on the launcher, and the empty-state visibility derive from the count
-of **outstanding** tickets: non-discarded AND status `!== 'done'`.
+Badge (`#fb-launch .fb-badge`), panel count (`#fb-count`), the `has` launcher class, and
+empty-state derive from **outstanding** = non-discarded AND status `!== 'done'`. `done`
+tickets remain in the panel (as history, in their collapsed section — Change 8) but are
+not counted. `todo`+`in-progress`+`error` count; all `done` → badge `0`. In disconnected
+mode `statusOf()` is null so nothing is excluded (count = all).
 
-- `todo`, `in-progress`, `error` → counted.
-- `done` → not counted.
-- All tickets `done` → badge shows `0`, `has` (red dot) clears, panel reads `0 notes`.
+## Change 2 — apply on `done` via DOM morphing (no reload, ever)
 
-`done` tickets remain in the panel list as history (with their `done` pill); they
-are excluded from the count only. Implementation note: today `visibleItems()` is
-used both for the rendered list and the count. Introduce an `outstandingCount`
-(filter `visibleItems()` by `statusOf(f) !== 'done'`) for the badge/count, while the
-list keeps rendering all `visibleItems()`.
+**Files:** `feedback-widget.html` (SSE + `reconcile()`), inlined [Idiomorph](https://github.com/bigskysoftware/idiomorph).
 
-## Change 2 — apply the change on `done` via DOM morphing (no reload, ever)
+`location.reload()` is removed entirely (not a fallback). Idiomorph is **inlined** into
+the widget IIFE (build.js forbids a second `<script>`); it exposes `window.Idiomorph`.
 
-**Files:** `feedback-widget.html` (SSE handlers + `reconcile()`), plus an inlined copy
-of [Idiomorph](https://github.com/bigskysoftware/idiomorph) in the widget source.
+- **Static mode:** ignore file-change SSE; on a ticket's transition *into* `done`, fetch
+  the page (its own `location.href`, cache-busted), unwrap `.fb-mark` spans, morph
+  `document.body` with `{morphStyle:'innerHTML', restoreFocus:true, ignoreActiveValue:true}`
+  and `beforeNodeRemoved`/`beforeNodeMorphed` callbacks that skip the widget's own nodes
+  (`#fb-launch/#fb-panel/#fb-toast/#fb-popover`), then re-anchor marks for still-open
+  tickets via the existing `reanchor()`. Defer the morph while the user is composing
+  (`#fb-text` focused / has draft, or a `.fb-note` is being edited); flush on close.
+- **Proxy mode** (`__CCFB.mode === 'proxy'`): do **not** morph; the upstream dev server's
+  HMR updates the page. Only update the panel pills/counter.
+- **On morph failure:** `console.warn` and leave the page as-is; never reload.
 
-The general technique for "apply a change to a live page with minimal interference" is
-**DOM morphing**: fetch the updated HTML, diff it against the live DOM, and patch only
-the nodes that actually changed — leaving scroll, focus, input values, media, and
-untouched JS state in place. This is what Turbo 8 / Hotwire adopted for smooth page
-refreshes. We use **Idiomorph** (Turbo switched to it from morphdom; on-by-default
-`restoreFocus`; dependency-free and tiny, so it is **inlined into the widget** — the
-widget stays self-contained). `location.reload()` is removed entirely — not a fallback.
-
-The update path depends on the serving mode (see "Static vs proxy mode" below):
-
-### Static mode (`--root`) — the widget morphs
-
-1. **Ignore file-change events.** The `reload` SSE listener must no longer call
-   `location.reload()`. Worker file saves do not touch the user's tab on their own.
-2. **Morph on `done` transition.** In `reconcile()`, when a ticket changes *into*
-   `done` (was not `done` before, is now), fetch the served page URL (cache-busted),
-   parse it, and morph the live `<body>`:
-   ```
-   Idiomorph.morph(document.body, newBodyHTML, {
-     morphStyle: 'innerHTML', restoreFocus: true, ignoreActiveValue: true,
-     callbacks: { /* skip the widget's own nodes — see below */ }
-   })
-   ```
-   `done` is written by the worker only after the edit is saved and the judge passes,
-   so the fetched HTML is always the final, verified source.
-3. **Protect the widget's own DOM.** The widget's injected nodes (`#fb-panel`,
-   `#fb-launch`, `#fb-toast`, `#fb-popover`) and the runtime `.fb-mark` spans are NOT
-   in the served source, so a naïve morph would delete them. Before morphing, **unwrap
-   all `.fb-mark` spans** (restore plain text); use `beforeNodeRemoved`/​
-   `beforeNodeMorphed` returning `false` to skip the widget root nodes; after morphing,
-   **re-anchor** marks for still-open tickets via the existing `reanchor()`. Marks are
-   a projection of open tickets onto the DOM, recomputed after each structural change.
-4. **Defer while composing.** If the comment composer (`#fb-text`) or a card note is
-   focused / has unsaved text, set a `pendingMorph` flag and morph on blur/close.
-   `ignoreActiveValue` additionally protects the focused field during a morph.
-5. **On morph failure.** Log a console warning and leave the page as-is. The edit is
-   safely in the file and appears on the user's next manual navigation. Never hard-reload.
-
-### Proxy mode (`--proxy`) — defer to the upstream dev server's HMR
-
-The wrapped dev server (e.g. Vite) already hot-updates the page over its own channel.
-The widget does **not** morph or reload on `done`; it only updates the panel's status
-pills and counter. Morphing here would fight the upstream HMR.
-
-Edge cases:
-- Morphing preserves the current presentation slide / scroll / focus *inherently*
-  (it doesn't reload), so no hash- or framework-specific logic is needed.
-- A `done` removal: the struck text is gone in the new HTML, so the morph removes it
-  and its (already unwrapped) mark does not re-anchor — correct.
-- Several tickets finishing close together: coalesce into one morph (a morph already
-  scheduled / `pendingMorph` absorbs the rest); a single fetch reflects all saved edits.
-
-### Why morphing and not "just use Vite's HMR"
-
-Explored and rejected as a *replacement* for morphing (it remains the proxy-mode path):
-
-- **Primary target is static** — the tool is mainly run on static HTML, decks, and
-  exported sites that have **no dev server at all**, so Vite simply does not apply to
-  the main use case. Morphing is the core mechanism, not a fallback.
-- **Vite full-reloads on HTML/content edits.** Vite HMR is module-based: plain HTML /
-  `index.html` edits "trigger a full page reload because they're not modules that can be
-  hot-updated." The worker's typical edits (remove/reword text in markup) are exactly
-  this — so Vite would re-introduce the full reload we are eliminating.
-- **No HMR boundary → full reload.** A module hot-updates only behind
-  `import.meta.hot.accept(`; otherwise the update bubbles up and Vite falls back to a
-  full reload. Content edits aren't behind accept boundaries.
-- **Vite doesn't morph the DOM.** State-preserving updates in a Vite app come from a
-  *framework* plugin (React Fast Refresh / Vue SFC / Svelte), not Vite itself, and only
-  for component edits. Vite provides the transport, not a DOM-preserving apply.
-
-Net: Vite preserves state only for framework-component edits with HMR boundaries — which
-**proxy mode already leverages** (we defer to it and don't morph). For static pages and
-content edits (the majority case here), morphing is the only thing that delivers the
-no-reload requirement. So the two modes are complementary, not competing.
+Rationale recap (why not "just use Vite's HMR"): primary targets are static
+HTML/decks/exported sites with no dev server; Vite full-reloads on HTML/content edits and
+needs `import.meta.hot.accept` boundaries; Vite provides transport, not a DOM-preserving
+apply. Morphing (static) + deferring to HMR (proxy) are complementary, not competing.
 
 ## Change 3 — judge validates in a separate tab/window
 
 **Files:** `~/.claude/skills/cc-htmlfeedback/SKILL.md`, `judge-prompt.md`.
 
-- The worker keeps the tab opened at **Start** as the user's tab and never reuses it
-  for validation.
-- The judge agent is instructed to **always create a fresh tab** (or window) with
-  `mcp__claude-in-chrome__tabs_create_mcp` for validation, navigate/​reload/​inspect
-  only that tab, and close it (or leave it) without ever touching the user's tab.
-- `judge-prompt.md` gains an explicit "open a NEW tab; never use the user's tab"
-  instruction in its step 1.
+The worker keeps each user tab sacred. The judge agent **always** opens a fresh tab with
+`mcp__claude-in-chrome__tabs_create_mcp` and inspects only that tab; never reuses/navigates
+a user tab. `judge-prompt.md` step 1 says so explicitly.
 
-## Change 4 — event-driven background watcher (no 60s polling)
+## Change 4 — event-driven background watcher (no 60s poll)
 
-**File:** `~/.claude/skills/cc-htmlfeedback/SKILL.md` (drain-loop wait step).
+**Files:** `~/.claude/skills/cc-htmlfeedback/SKILL.md`, `lib/watch-inbox.js`.
 
-When there is no `todo` ticket, instead of a foreground 60s call, the worker runs
-the watcher as a **background task**:
+`watch-inbox.js` watches the **whole queue tree** (`.cc-htmlfeedback/`, recursively) and
+exits when any `feedback_inbox.jsonl` changes (or on a long timeout). The worker runs it
+as a **background task** (`run_in_background: true`); the harness re-invokes the session
+when it exits — i.e. a real comment arrived on *some* page. Idle between comments = zero
+turns. On wake the worker re-scans all pages, merges new inbox lines into the right per-
+page board, processes, and re-arms. The 30-min timeout is only a heartbeat (`stop`
+interrupts the idle session as a normal message). On Linux, recursive `fs.watch` is
+unreliable — fall back to watching the root plus each page subdir (documented in the lib).
 
-```
-node $TOOLING/lib/watch-inbox.js <QUEUE> <currentInboxLineCount> 1800000   # run_in_background: true
-```
+## Change 5 — startup outstanding-feedback check
 
-- The harness re-invokes the session the moment the watcher **exits** — i.e. when a
-  real comment arrives (`fs.watch` fires). Between comments the session is idle:
-  zero turns, zero tokens.
-- On wake, the worker merges new inbox tickets into `state.json` as `todo`, processes
-  them, then re-arms a fresh background watcher.
-- The `1800000` (30 min) timeout is only a liveness heartbeat; it is no longer needed
-  for stop-responsiveness because `/cc-htmlfeedback stop` arrives as a normal user
-  message that interrupts the idle session.
+**File:** `~/.claude/skills/cc-htmlfeedback/SKILL.md` (Start sequence).
 
-`watch-inbox.js` itself needs no code change — only how the worker invokes it
-(background vs foreground, longer timeout).
+On `/cc-htmlfeedback`, before draining: scan all per-page boards. If any non-`done`
+tickets exist, summarize them grouped by **page** then **status** (counts + one-line each),
+and ask the user how to proceed:
+- **Resume** the `todo`/`in-progress` items (default),
+- **Explain/retry** each `error` (show its `result` reason),
+- **Clean** — clear `done` history, or wipe a page's board for a fresh start.
+Then enter the drain loop.
 
-## Files touched
+## Change 6 — multi-file: one session, many tabs, concurrent fixes
 
-- `feedback-widget.html` — counter (Change 1), SSE handling + morph-on-`done` and the
-  inlined Idiomorph source (Change 2). This is the built widget source; rebuild
-  `extension/feedback-widget.js` + `dist/*` via `node build.js` after editing. Note the
-  build's size budget / `--check` may need updating for the inlined Idiomorph (~a few KB).
-- `~/.claude/skills/cc-htmlfeedback/SKILL.md` — judge isolation (Change 3),
-  background watcher (Change 4).
-- `~/.claude/skills/cc-htmlfeedback/judge-prompt.md` — new-tab instruction (Change 3).
+**Files:** `server.js`, `lib/queue.js`, `lib/watch-inbox.js`, `SKILL.md`.
 
-## Verification
+- **Server routing:** a comment POST includes `page`. The server computes `pagekey`,
+  creates `pages/<pagekey>/` + an `index.json` entry on first sight, and appends to that
+  page's `feedback_inbox.jsonl`. `GET /__ccfb/tickets?page=<url>` returns that page's
+  board; `GET /__ccfb/events?page=<url>` streams that page's board changes. (Endpoints
+  become page-scoped; the widget passes its own `location.href`.)
+- **Worker concurrency:** the drain loop collects `todo` tickets across all pages and fans
+  **independent** tickets (distinct files) out to parallel subagents (`Agent` tool), each
+  doing locate → edit → (page tab morphs on `done`) → judge-in-separate-tab → write *that
+  page's* board. Per-file boards make these writes non-conflicting. Cap concurrency
+  (e.g. ≤ 4). Two tickets on the **same** file are serialized.
+- **Browser:** one tab per page (the user opens them); the worker tracks which tab is
+  which page so it can confirm a page is open before morph-relevant work.
 
-Per the project's testing rule, the loop must be exercised end-to-end in Chrome:
-1. Serve a multi-section/scrollable page (static mode), open it as the user's tab,
-   scroll down and focus somewhere.
-2. Submit a strike comment → strikethrough appears immediately, badge increments,
-   ticket `todo`. No DOM change through `todo`/`in-progress`.
-3. Worker applies the edit; judge runs in a **separate** tab; on `done` the user's tab
-   **morphs** (no reload) — struck text actually removed, scroll position and focus
-   preserved, badge decrements.
-4. With all tickets `done`, badge reads `0`.
-5. Confirm the widget's own panel/marks survive the morph (not deleted).
-6. While idle, confirm the session produces no ~60s wake turns and wakes promptly on
-   the next comment.
-7. Submit a comment while typing in the composer → confirm a concurrent `done` defers
-   its morph until the composer closes.
-8. Proxy mode (wrap a Vite dev server): confirm the widget does **not** morph on `done`
-   and lets Vite's HMR update the page; panel status/counter still update.
+## Change 7 — file rename (board/inbox)
+
+**Files:** `lib/queue.js` (paths), `server.js`, `SKILL.md`, tests.
+
+`lib/queue.js` exposes per-page path helpers: `pageKey(pageUrl)`,
+`inboxPath(queueDir, pageKey)`, `tasksPath(queueDir, pageKey)`, `indexPath(queueDir)`,
+plus `newTicket`. Old single-file `inbox.jsonl`/`state.json` are replaced. The board JSON
+shape gains `page` and `file` alongside `version` and `tickets`.
+
+## Change 8 — sidebar: collapsible sections per status, Done collapsed
+
+**File:** `feedback-widget.html` (`render()` + CSS + markup).
+
+The flat sorted list becomes grouped collapsible sections in this order: **In progress**,
+**To do**, **Error**, **Done**. Each section header shows its count and toggles its body
+(`<details>`/`<summary>` or a class toggle). **Done starts collapsed**; the others start
+expanded. Empty sections are hidden. Section open/closed state persists across re-renders
+(don't rebuild a section the user toggled). In disconnected mode (no statuses) fall back to
+a single un-sectioned list.
+
+## Change 9 — Clean button (wipes this page's tasks)
+
+**Files:** `feedback-widget.html` (button + handler), `server.js` (`POST /__ccfb/clean`),
+`lib/queue.js`.
+
+A `Clean` button in the panel header, **confirm-guarded** (in-widget inline confirm, not a
+native `confirm()` dialog — native dialogs block the extension). On confirm it
+`POST /__ccfb/clean {page: location.href}`; the server truncates **that page's**
+`feedback_inbox.jsonl` and `feedback_tasks.json` and broadcasts an empty board over SSE;
+the widget clears its local store, removes marks, and re-renders to empty. Scope is the
+current page only — other pages' boards are untouched. (Clean is a deliberate reset;
+because the targeted page's worker is typically idle at clean time, the server truncating
+the board is acceptable; the worker treats the empty board as authoritative on next scan.)
+
+## Change 10 — suppress host-page hotkeys while the composer is open
+
+**File:** `feedback-widget.html` (key-event handling on the widget containers).
+
+When the selection popover (`#fb-popover`) is open or a `.fb-note` is being edited, the
+user is typing feedback — keystrokes must NOT trigger the host page's global shortcuts
+(e.g. a deck's `f` = fullscreen, arrows/space = next slide). Stop `keydown`, `keyup`, and
+`keypress` from propagating out of the widget containers (`#fb-popover`, `#fb-panel`) via
+bubble-phase `e.stopPropagation()` on those elements. The widget's own shortcuts (Enter to
+submit, Esc to close, Backspace-to-strike, ⌘/Ctrl+C) still fire because they run at the
+target before the container stops propagation; `preventDefault` is NOT used, so normal
+typing is unaffected. Caveat: hosts that bind global keys in the *capture* phase on
+`document`/`window` (rare) won't be blocked by bubble-phase stopping; documented as a known
+limitation, acceptable for the common case (reveal.js and most decks listen in bubble).
+
+## Files touched (summary)
+
+- `feedback-widget.html` — Changes 1, 2, 8, 9, 10 (+ inlined Idiomorph); rebuild via
+  `node build.js`, verify `node build.js --check`. Built artifact `extension/feedback-widget.js` is what the server serves.
+- `lib/queue.js` — per-page path helpers + board shape (Changes 6, 7).
+- `lib/inject.js` — `mode` flag in `__CCFB` (Change 2 proxy/static branch).
+- `lib/watch-inbox.js` — watch the queue tree, wake on any inbox change (Changes 4, 6).
+- `server.js` — page-scoped routing/endpoints, `mode`, `clean` endpoint (Changes 2, 6, 9).
+- `~/.claude/skills/cc-htmlfeedback/SKILL.md` — startup check, multi-file drain with
+  parallel subagents, background watcher, judge isolation (Changes 3, 4, 5, 6).
+- `~/.claude/skills/cc-htmlfeedback/judge-prompt.md` — separate-tab instruction (Change 3).
+- `test/*.test.js` — extend `inject`, `queue`, `server`, `watch-inbox` tests for the above.
+
+## Verification (end-to-end in Chrome)
+
+1. Serve a dir with ≥2 HTML files; open each in its own tab (multi-file).
+2. Comment on both pages → strikethrough/marker appears immediately; per-page badges
+   increment; per-page boards created under `pages/<pagekey>/`. No DOM change through
+   `todo`/`in-progress`.
+3. Worker fixes both pages **concurrently** (parallel subagents); judge runs in a separate
+   tab per ticket; on each `done` the relevant tab **morphs** (no reload) — text changed,
+   scroll/focus preserved, widget + open-ticket marks survive.
+4. All `done` on a page → its badge `0`; `done` tickets sit in the collapsed Done section.
+5. Collapsible sections: Done starts collapsed; toggling persists across re-renders.
+6. Clean button on page A → page A board empties (inbox + tasks truncated, marks gone);
+   page B untouched.
+7. Idle: no ~60s wake turns; the session wakes promptly on the next comment on any page.
+8. Compose a comment while a ticket finishes → that page's morph defers until the composer
+   closes.
+9. Startup: re-run `/cc-htmlfeedback` with leftover non-done tickets → it summarizes them
+   grouped by page+status and offers resume / explain-errors / clean.
+10. Proxy mode: widget does not morph; upstream HMR updates the page; panel/badge update.
