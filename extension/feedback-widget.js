@@ -89,7 +89,23 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 .fb-mark.active{outline:2px solid #103a8e;outline-offset:1px}
 .fb-pending{background:#cfe3ff;border-radius:2px;box-shadow:inset 0 -1px rgba(0,0,0,.06)}
 .fb-mark.fb-removed{background:none!important;text-decoration:none!important;box-shadow:none!important;outline:none!important;cursor:auto}
-@media print{#fb-launch,#fb-panel,#fb-popover{display:none!important}.fb-mark{background:none!important;text-decoration:none!important}}`;
+@media print{#fb-launch,#fb-panel,#fb-popover{display:none!important}.fb-mark{background:none!important;text-decoration:none!important}}
+/* collapsible status sections */
+.fb-sec-group{margin-bottom:8px}
+.fb-sec-group>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font:700 11px/1.4 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.04em;color:#5b6072;padding:6px 4px;user-select:none}
+.fb-sec-group>summary::-webkit-details-marker{display:none}
+.fb-sec-group>summary:before{content:"▸";margin-right:6px;color:#aab1c4;transition:transform .15s ease;display:inline-block}
+.fb-sec-group[open]>summary:before{transform:rotate(90deg)}
+.fb-sec-count{color:#9aa1b4;font-weight:600}
+#fb-clean{width:auto;padding:0 9px;height:26px;border:none;border-radius:7px;background:#f1f2f7;color:#5b6072;font:600 11px/1 -apple-system,sans-serif;cursor:pointer}
+#fb-clean:hover{background:#fdeceb;color:#c0392b}
+#fb-clean[data-armed="1"]{background:#fdeceb;color:#c0392b}
+/* in-progress "working" animation on marks */
+.fb-mark.fb-working{animation:fbpulse 1.1s ease-in-out infinite}
+@keyframes fbpulse{0%,100%{background-color:#fbe96b}50%{background-color:#ffd43b}}
+.fb-mark.strike.fb-working{animation:fbpulsestrike 1.1s ease-in-out infinite}
+@keyframes fbpulsestrike{0%,100%{background-color:#fdeceb}50%{background-color:#f7c8c2}}
+@media (prefers-reduced-motion:reduce){.fb-mark.fb-working,.fb-mark.strike.fb-working{animation:none;background-color:#ffd43b}}`;
   var FB_MARKUP = `<div id="fb-launch" role="group" aria-label="Feedback">
   <button id="fb-open" type="button" title="Open feedback panel">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -102,7 +118,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 <div id="fb-toast" role="status" aria-live="polite">✓ Feedback copied</div>
 <aside id="fb-panel" aria-label="Feedback panel">
   <div class="fb-head">
-    <div class="fb-headtop"><span class="fb-title">Feedback</span><div class="fb-headbtns"><button id="fb-dock" type="button" title="Move panel to the other side" aria-label="Move panel to the other side">⇆</button><button id="fb-close" type="button" title="Close" aria-label="Close feedback panel">✕</button></div></div>
+    <div class="fb-headtop"><span class="fb-title">Feedback</span><div class="fb-headbtns"><button id="fb-clean" type="button" title="Clear all tasks for this page" aria-label="Clear all tasks for this page">Clean</button><button id="fb-dock" type="button" title="Move panel to the other side" aria-label="Move panel to the other side">⇆</button><button id="fb-close" type="button" title="Close" aria-label="Close feedback panel">✕</button></div></div>
     <button id="fb-copy" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       Copy feedback
@@ -126,6 +142,8 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     var st = document.createElement('style'); st.textContent = FB_CSS; document.head.appendChild(st);
     var tpl = document.createElement('template'); tpl.innerHTML = FB_MARKUP; document.body.appendChild(tpl.content);
 
+  /* vendored: Idiomorph v0.7.3 (https://github.com/bigskysoftware/idiomorph) — DOM morphing for the on-done apply. Local var (not window). Do not reformat. */
+  var Idiomorph=function(){"use strict";const e=()=>{};const n={morphStyle:"outerHTML",callbacks:{beforeNodeAdded:e,afterNodeAdded:e,beforeNodeMorphed:e,afterNodeMorphed:e,beforeNodeRemoved:e,afterNodeRemoved:e,beforeAttributeUpdated:e},head:{style:"merge",shouldPreserve:e=>e.getAttribute("im-preserve")==="true",shouldReAppend:e=>e.getAttribute("im-re-append")==="true",shouldRemove:e,afterHeadMorphed:e},restoreFocus:true};function t(t,e,n={}){t=d(t);const r=f(e);const o=u(t,r,n);const i=a(o,()=>{return c(o,t,r,e=>{if(e.morphStyle==="innerHTML"){s(e,t,r);return Array.from(t.childNodes)}else{return l(e,t,r)}})});o.pantry.remove();return i}function l(e,t,n){const r=f(t);s(e,r,n,t,t.nextSibling);return Array.from(r.childNodes)}function a(e,t){if(!e.config.restoreFocus)return t();let n=document.activeElement;if(!(n instanceof HTMLInputElement||n instanceof HTMLTextAreaElement)){return t()}const{id:r,selectionStart:o,selectionEnd:i}=n;const l=t();if(r&&r!==document.activeElement?.id){n=e.target.querySelector(`[id="${r}"]`);n?.focus()}if(n&&!n.selectionEnd&&i){n.setSelectionRange(o,i)}return l}const s=function(){function e(e,t,n,r=null,o=null){if(t instanceof HTMLTemplateElement&&n instanceof HTMLTemplateElement){t=t.content;n=n.content}r||=t.firstChild;for(const i of n.childNodes){if(r&&r!=o){const a=d(e,i,r,o);if(a){if(a!==r){m(e,r,a)}p(a,i,e);r=a.nextSibling;continue}}if(i instanceof Element&&e.persistentIds.has(i.id)){const s=h(t,i.id,r,e);p(s,i,e);r=s.nextSibling;continue}const l=u(t,i,r,e);if(l){r=l.nextSibling}}while(r&&r!=o){const c=r;r=r.nextSibling;f(e,c)}}function u(e,t,n,r){if(r.callbacks.beforeNodeAdded(t)===false)return null;if(r.idMap.has(t)){const o=document.createElement(t.tagName);e.insertBefore(o,n);p(o,t,r);r.callbacks.afterNodeAdded(o);return o}else{const i=document.importNode(t,true);e.insertBefore(i,n);r.callbacks.afterNodeAdded(i);return i}}const d=function(){function e(e,t,n,r){let o=null;let i=t.nextSibling;let l=0;let a=n;while(a&&a!=r){if(c(a,t)){if(s(e,a,t)){return a}if(o===null){if(!e.idMap.has(a)){o=a}}}if(o===null&&i&&c(a,i)){l++;i=i.nextSibling;if(l>=2){o=undefined}}if(a.contains(document.activeElement))break;a=a.nextSibling}return o||null}function s(e,t,n){let r=e.idMap.get(t);let o=e.idMap.get(n);if(!o||!r)return false;for(const i of r){if(o.has(i)){return true}}return false}function c(e,t){const n=e;const r=t;return n.nodeType===r.nodeType&&n.tagName===r.tagName&&(!n.id||n.id===r.id)}return e}();function f(e,t){if(e.idMap.has(t)){l(e.pantry,t,null)}else{if(e.callbacks.beforeNodeRemoved(t)===false)return;t.parentNode?.removeChild(t);e.callbacks.afterNodeRemoved(t)}}function m(t,e,n){let r=e;while(r&&r!==n){let e=r;r=r.nextSibling;f(t,e)}return r}function h(e,t,n,r){const o=r.target.id===t&&r.target||r.target.querySelector(`[id="${t}"]`)||r.pantry.querySelector(`[id="${t}"]`);i(o,r);l(e,o,n);return o}function i(t,n){const r=t.id;while(t=t.parentNode){let e=n.idMap.get(t);if(e){e.delete(r);if(!e.size){n.idMap.delete(t)}}}}function l(t,n,r){if(t.moveBefore){try{t.moveBefore(n,r)}catch(e){t.insertBefore(n,r)}}else{t.insertBefore(n,r)}}return e}();const p=function(){function e(e,t,n){if(n.ignoreActive&&e===document.activeElement){return null}if(n.callbacks.beforeNodeMorphed(e,t)===false){return e}if(e instanceof HTMLHeadElement&&n.head.ignore){}else if(e instanceof HTMLHeadElement&&n.head.style!=="morph"){m(e,t,n)}else{r(e,t,n);if(!f(e,n)){s(n,e,t)}}n.callbacks.afterNodeMorphed(e,t);return e}function r(e,t,n){let r=t.nodeType;if(r===1){const o=e;const i=t;const l=o.attributes;const a=i.attributes;for(const s of a){if(d(s.name,o,"update",n)){continue}if(o.getAttribute(s.name)!==s.value){o.setAttribute(s.name,s.value)}}for(let e=l.length-1;0<=e;e--){const c=l[e];if(!c)continue;if(!i.hasAttribute(c.name)){if(d(c.name,o,"remove",n)){continue}o.removeAttribute(c.name)}}if(!f(o,n)){u(o,i,n)}}if(r===8||r===3){if(e.nodeValue!==t.nodeValue){e.nodeValue=t.nodeValue}}}function u(n,r,o){if(n instanceof HTMLInputElement&&r instanceof HTMLInputElement&&r.type!=="file"){let e=r.value;let t=n.value;i(n,r,"checked",o);i(n,r,"disabled",o);if(!r.hasAttribute("value")){if(!d("value",n,"remove",o)){n.value="";n.removeAttribute("value")}}else if(t!==e){if(!d("value",n,"update",o)){n.setAttribute("value",e);n.value=e}}}else if(n instanceof HTMLOptionElement&&r instanceof HTMLOptionElement){i(n,r,"selected",o)}else if(n instanceof HTMLTextAreaElement&&r instanceof HTMLTextAreaElement){let e=r.value;let t=n.value;if(d("value",n,"update",o)){return}if(e!==t){n.value=e}if(n.firstChild&&n.firstChild.nodeValue!==e){n.firstChild.nodeValue=e}}}function i(e,t,n,r){const o=t[n],i=e[n];if(o!==i){const l=d(n,e,"update",r);if(!l){e[n]=t[n]}if(o){if(!l){e.setAttribute(n,"")}}else{if(!d(n,e,"remove",r)){e.removeAttribute(n)}}}}function d(e,t,n,r){if(e==="value"&&r.ignoreActiveValue&&t===document.activeElement){return true}return r.callbacks.beforeAttributeUpdated(e,t,n)===false}function f(e,t){return!!t.ignoreActiveValue&&e===document.activeElement&&e!==document.body}return e}();function c(t,e,n,r){if(t.head.block){const o=e.querySelector("head");const i=n.querySelector("head");if(o&&i){const l=m(o,i,t);return Promise.all(l).then(()=>{const e=Object.assign(t,{head:{block:false,ignore:true}});return r(e)})}}return r(t)}function m(e,t,r){let o=[];let i=[];let l=[];let a=[];let s=new Map;for(const n of t.children){s.set(n.outerHTML,n)}for(const u of e.children){let e=s.has(u.outerHTML);let t=r.head.shouldReAppend(u);let n=r.head.shouldPreserve(u);if(e||n){if(t){i.push(u)}else{s.delete(u.outerHTML);l.push(u)}}else{if(r.head.style==="append"){if(t){i.push(u);a.push(u)}}else{if(r.head.shouldRemove(u)!==false){i.push(u)}}}}a.push(...s.values());let c=[];for(const d of a){let n=document.createRange().createContextualFragment(d.outerHTML).firstChild;if(r.callbacks.beforeNodeAdded(n)!==false){if("href"in n&&n.href||"src"in n&&n.src){let t;let e=new Promise(function(e){t=e});n.addEventListener("load",function(){t()});c.push(e)}e.appendChild(n);r.callbacks.afterNodeAdded(n);o.push(n)}}for(const f of i){if(r.callbacks.beforeNodeRemoved(f)!==false){e.removeChild(f);r.callbacks.afterNodeRemoved(f)}}r.head.afterHeadMorphed(e,{added:o,kept:l,removed:i});return c}const u=function(){function e(e,t,n){const{persistentIds:r,idMap:o}=d(e,t);const i=a(n);const l=i.morphStyle||"outerHTML";if(!["innerHTML","outerHTML"].includes(l)){throw`Do not understand how to morph style ${l}`}return{target:e,newContent:t,config:i,morphStyle:l,ignoreActive:i.ignoreActive,ignoreActiveValue:i.ignoreActiveValue,restoreFocus:i.restoreFocus,idMap:o,persistentIds:r,pantry:s(),callbacks:i.callbacks,head:i.head}}function a(e){let t=Object.assign({},n);Object.assign(t,e);t.callbacks=Object.assign({},n.callbacks,e.callbacks);t.head=Object.assign({},n.head,e.head);return t}function s(){const e=document.createElement("div");e.hidden=true;document.body.insertAdjacentElement("afterend",e);return e}function c(e){let t=Array.from(e.querySelectorAll("[id]"));if(e.id){t.push(e)}return t}function u(n,e,r,t){for(const o of t){if(e.has(o.id)){let t=o;while(t){let e=n.get(t);if(e==null){e=new Set;n.set(t,e)}e.add(o.id);if(t===r)break;t=t.parentElement}}}}function d(e,t){const n=c(e);const r=c(t);const o=f(n,r);let i=new Map;u(i,o,e,n);const l=t.__idiomorphRoot||t;u(i,o,l,r);return{persistentIds:o,idMap:i}}function f(e,t){let n=new Set;let r=new Map;for(const{id:i,tagName:l}of e){if(r.has(i)){n.add(i)}else{r.set(i,l)}}let o=new Set;for(const{id:i,tagName:l}of t){if(o.has(i)){n.add(i)}else if(r.get(i)===l){o.add(i)}}for(const i of n){o.delete(i)}return o}return e}();const{normalizeElement:d,normalizeParent:f}=function(){const o=new WeakSet;function e(e){if(e instanceof Document){return e.documentElement}else{return e}}function r(e){if(e==null){return document.createElement("div")}else if(typeof e==="string"){return r(l(e))}else if(o.has(e)){return e}else if(e instanceof Node){if(e.parentNode){return new i(e)}else{const t=document.createElement("div");t.append(e);return t}}else{const t=document.createElement("div");for(const n of[...e]){t.append(n)}return t}}class i{constructor(e){this.originalNode=e;this.realParentNode=e.parentNode;this.previousSibling=e.previousSibling;this.nextSibling=e.nextSibling}get childNodes(){const e=[];let t=this.previousSibling?this.previousSibling.nextSibling:this.realParentNode.firstChild;while(t&&t!=this.nextSibling){e.push(t);t=t.nextSibling}return e}querySelectorAll(r){return this.childNodes.reduce((t,e)=>{if(e instanceof Element){if(e.matches(r))t.push(e);const n=e.querySelectorAll(r);for(let e=0;e<n.length;e++){t.push(n[e])}}return t},[])}insertBefore(e,t){return this.realParentNode.insertBefore(e,t)}moveBefore(e,t){return this.realParentNode.moveBefore(e,t)}get __idiomorphRoot(){return this.originalNode}}function l(n){let r=new DOMParser;let e=n.replace(/<svg(\s[^>]*>|>)([\s\S]*?)<\/svg>/gim,"");if(e.match(/<\/html>/)||e.match(/<\/head>/)||e.match(/<\/body>/)){let t=r.parseFromString(n,"text/html");if(e.match(/<\/html>/)){o.add(t);return t}else{let e=t.firstChild;if(e){o.add(e)}return e}}else{let e=r.parseFromString("<body><template>"+n+"</template></body>","text/html");let t=e.body.querySelector("template").content;o.add(t);return t}}return{normalizeElement:e,normalizeParent:r}}();return{morph:t,defaults:n}}();
   const CONTENT = document.body;
   const launch = document.getElementById('fb-launch');
   const panel  = document.getElementById('fb-panel');
@@ -160,6 +178,18 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   document.getElementById('fb-open').addEventListener('click', () => openPanel(!panel.classList.contains('open')));
   document.getElementById('fb-close').addEventListener('click', () => openPanel(false));
   document.getElementById('fb-dock').addEventListener('click', () => document.body.classList.toggle('fb-dock-left'));
+  // Clean: wipe THIS page's tasks (inline two-step confirm — no native dialog, which would block the extension).
+  document.getElementById('fb-clean').addEventListener('click', function(){
+    if(this.dataset.armed !== '1'){ this.dataset.armed = '1'; this.textContent = 'Sure?'; const b = this; setTimeout(() => { if(b.dataset.armed === '1'){ b.dataset.armed = ''; b.textContent = 'Clean'; } }, 3000); return; }
+    this.dataset.armed = ''; this.textContent = 'Clean';
+    if(CCFB) fetch(ccfbBase() + '/__ccfb/clean', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ page: location.href }) }).catch(() => {});
+    Object.keys(store).forEach(id => delete store[id]);
+    unwrapAllMarks();                                // strip on-page marks (CONTENT only, never widget DOM)
+    render();
+    showToast('Cleared');
+  });
+  // While composing feedback, don't let keystrokes trigger the host page's hotkeys (e.g. f=fullscreen, arrows=slides).
+  ['keydown','keyup','keypress'].forEach(ev => { pop.addEventListener(ev, e => e.stopPropagation()); panel.addEventListener(ev, e => e.stopPropagation()); });
   let toastT;
   function showToast(msg, isError){ const t = document.getElementById('fb-toast'); t.textContent = (isError ? '⚠️ ' : '✓ ') + msg; t.classList.toggle('err', !!isError); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600); }
 
@@ -229,7 +259,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   }
   function clearPending(){ unwrap('pending'); pending = null; }
   function closePop(){ pop.style.display = 'none'; }
-  function hidePop(){ closePop(); clearPending(); sideManual = false; }   // each new selection re-auto-orients
+  function hidePop(){ closePop(); clearPending(); sideManual = false; if(pendingApply){ pendingApply = false; applyMorph(); } }   // re-auto-orient; flush any deferred morph
 
   document.getElementById('fb-side').addEventListener('click', () => {
     sideManual = true;                                   // user took manual control of the side
@@ -332,25 +362,63 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     if(result){ result.textContent = txt; result.style.display = txt ? 'block' : 'none'; }
     card.classList.toggle('fb-orphan', !!f.anchorLost);
   }
+  const SEC_ORDER = ['in-progress', 'todo', 'error', 'done'];
+  const SEC_LABEL = { 'in-progress':'In progress', 'todo':'To do', 'error':'Error', 'done':'Done' };
+  // Build/reuse a card node. Reused across re-renders so a card being edited is never rebuilt.
+  function ensureCard(f){
+    let card = list.querySelector('.fb-card[data-fb-id="' + f.id + '"]');
+    if(!card){
+      card = document.createElement('div');
+      card.dataset.fbId = f.id;
+      card.setAttribute('role', 'listitem');
+      card.innerHTML = cardHTML(f);
+    }
+    card.className = 'fb-card' + (f.type === 'strike' ? ' strike' : '') + (card.classList.contains('active') ? ' active' : '');
+    applyStatus(card, f);
+    return card;
+  }
+  // Toggle the "working" animation on a ticket's on-page marks while it is in-progress.
+  function syncMarkState(f){
+    document.querySelectorAll('.fb-mark[data-fb-id="' + f.id + '"]').forEach(m => m.classList.toggle('fb-working', statusOf(f) === 'in-progress'));
+  }
+  function getSection(key){
+    let sec = list.querySelector(':scope > details[data-st="' + key + '"]');
+    if(!sec){
+      sec = document.createElement('details'); sec.className = 'fb-sec-group'; sec.dataset.st = key;
+      if(key !== 'done') sec.open = true;            // Done starts collapsed; user toggles persist (we never reset .open after)
+      const sum = document.createElement('summary');
+      sum.innerHTML = '<span>' + SEC_LABEL[key] + '</span><span class="fb-sec-count"></span>';
+      sec.appendChild(sum);
+    }
+    return sec;
+  }
   function render(){
     const vis = visibleItems(), want = vis.map(f => f.id);
-    [...list.children].forEach(c => { if(!want.includes(+c.dataset.fbId)) c.remove(); });
-    vis.forEach((f, i) => {
-      let card = list.querySelector(':scope > .fb-card[data-fb-id="' + f.id + '"]');
-      if(!card){                                   // note content is written once, on creation, so live edits are never clobbered
-        card = document.createElement('div');
-        card.dataset.fbId = f.id;
-        card.setAttribute('role', 'listitem');
-        card.innerHTML = cardHTML(f);
-      }
-      card.className = 'fb-card' + (f.type === 'strike' ? ' strike' : '') + (card.classList.contains('active') ? ' active' : '');
-      applyStatus(card, f);
-      if(list.children[i] !== card) list.insertBefore(card, list.children[i] || null);
-    });
-    countEl.textContent = vis.length;
-    badgeEl.textContent = vis.length;
-    launch.classList.toggle('has', vis.length > 0);
-    empty.style.display = vis.length ? 'none' : 'block';
+    list.querySelectorAll('.fb-card').forEach(c => { if(!want.includes(+c.dataset.fbId)) c.remove(); });
+    if(!CCFB){
+      // disconnected mode: flat list, no status sections
+      vis.forEach((f, i) => { const card = ensureCard(f); if(list.children[i] !== card) list.insertBefore(card, list.children[i] || null); });
+    } else {
+      SEC_ORDER.forEach((key, idx) => {              // ensure sections exist, in fixed order
+        const sec = getSection(key);
+        if(list.children[idx] !== sec) list.insertBefore(sec, list.children[idx] || null);
+      });
+      const byKey = {}; SEC_ORDER.forEach(k => byKey[k] = []);
+      vis.forEach(f => { (byKey[statusOf(f)] || byKey.todo).push(f); });
+      SEC_ORDER.forEach(key => {
+        const sec = list.querySelector(':scope > details[data-st="' + key + '"]');
+        const items = byKey[key];
+        sec.hidden = items.length === 0;
+        sec.querySelector(':scope > summary .fb-sec-count').textContent = items.length;
+        items.forEach((f, i) => { const card = ensureCard(f); const ref = sec.children[i + 1] || null; if(ref !== card) sec.insertBefore(card, ref); }); // +1 skips <summary>
+      });
+    }
+    vis.forEach(syncMarkState);                       // in-progress "working" animation
+    const outstanding = CCFB ? vis.filter(f => statusOf(f) !== 'done').length : vis.length;
+    countEl.textContent = outstanding;
+    badgeEl.textContent = outstanding;
+    launch.classList.toggle('has', outstanding > 0);
+    empty.style.display = vis.length ? 'none' : 'block';   // list still shows done as history
   }
 
   // One delegated listener per event type — no per-card binding, so incremental updates never churn handlers.
@@ -365,6 +433,9 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     const note = e.target.closest('.fb-note'); if(!note) return;
     const f = store[+note.closest('.fb-card').dataset.fbId];
     if(f) f.note = note.innerText.trim();          // innerText preserves the user's line breaks
+  });
+  list.addEventListener('focusout', e => {         // flush a deferred morph once a note edit ends
+    if(e.target.closest && e.target.closest('.fb-note') && pendingApply && !isComposing()){ pendingApply = false; applyMorph(); }
   });
   list.addEventListener('keydown', e => {
     if(e.key !== 'Enter' || e.shiftKey) return;
@@ -470,6 +541,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   // Server state is authoritative: merge each ticket into the store by server id (sid),
   // creating + re-anchoring any we don't have locally yet.
   function reconcile(tickets){
+    let enteredDone = false;
     tickets.forEach(t => {
       let f = Object.values(store).find(x => x.sid === t.id);
       if(!f){
@@ -478,16 +550,47 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
           note: t.note || '', type: t.type || 'comment', page: t.page || '', removed: false };
         if(t.page === location.href && f.quote) reanchor(f);
       }
+      const was = f.status;
       f.status = t.status; f.result = t.result || ''; f.files = t.files || [];
+      if(t.status === 'done' && was && was !== 'done') enteredDone = true;   // a ticket just finished
     });
     render();
+    if(enteredDone) scheduleApply();   // reflect the verified change (morph in static mode)
   }
-  function loadTickets(){ fetch(ccfbBase() + '/__ccfb/tickets').then(r => r.json()).then(d => reconcile(d.tickets || [])).catch(() => {}); }
+
+  /* ---- on-done apply: morph the live DOM (static) so the verified change appears without a
+     reload, preserving scroll/focus/state. Proxy mode defers to the upstream dev server's HMR. ---- */
+  let pendingApply = false;
+  function isWidgetEl(n){ return n && n.nodeType === 1 && (['fb-launch','fb-panel','fb-toast','fb-popover'].includes(n.id) || (n.closest && n.closest('#fb-launch,#fb-panel,#fb-toast,#fb-popover'))); }
+  function isComposing(){ const ae = document.activeElement; if(ae === ta && pop.style.display === 'block') return true; if(ae && ae.closest && ae.closest('.fb-note')) return true; if(ta && ta.value && ta.value.trim()) return true; return false; }
+  function scheduleApply(){ if(!CCFB || CCFB.mode === 'proxy') return; if(isComposing()){ pendingApply = true; return; } applyMorph(); }
+  function unwrapAllMarks(){
+    CONTENT.querySelectorAll('.fb-mark, .fb-pending').forEach(sp => {
+      if(sp.closest('#fb-launch,#fb-panel,#fb-toast,#fb-popover')) return;
+      const p = sp.parentNode; if(!p) return;
+      while(sp.firstChild) p.insertBefore(sp.firstChild, sp);
+      p.removeChild(sp); p.normalize();
+    });
+  }
+  function applyMorph(){
+    fetch(location.href, { cache:'no-store' }).then(r => r.text()).then(html => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      unwrapAllMarks();
+      Idiomorph.morph(document.body, doc.body.innerHTML, { morphStyle:'innerHTML', restoreFocus:true, ignoreActiveValue:true,
+        callbacks: { beforeNodeRemoved(n){ if(isWidgetEl(n)) return false; }, beforeNodeMorphed(n){ if(isWidgetEl(n)) return false; } } });
+      Object.values(store).forEach(f => { if(!f.removed && statusOf(f) !== 'done' && f.quote && f.page === location.href) reanchor(f); });
+      render();
+    }).catch(err => console.warn('cc-htmlfeedback: morph failed, leaving page unchanged', err));
+  }
+  function pageParam(){ return 'page=' + encodeURIComponent(location.href); }
+  function loadTickets(){ fetch(ccfbBase() + '/__ccfb/tickets?' + pageParam()).then(r => r.json()).then(d => reconcile(d.tickets || [])).catch(() => {}); }
   function subscribeSSE(){
     try {
-      const es = new EventSource(ccfbBase() + '/__ccfb/events');
+      const es = new EventSource(ccfbBase() + '/__ccfb/events?' + pageParam());
       es.addEventListener('tickets', e => { try { reconcile(JSON.parse(e.data).tickets || []); } catch(_){} });
-      es.addEventListener('reload', () => location.reload());
+      // File-change events no longer touch the user's tab; the page updates only on a ticket's
+      // `done` transition (reconcile → scheduleApply, Task 8). No full reload, ever.
+      es.addEventListener('reload', () => {});
     } catch(e){}
   }
   function maybeBanner(){

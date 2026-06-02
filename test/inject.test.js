@@ -20,3 +20,8 @@ test('does not double-inject', () => {
   const twice = injectWidget(once, 'SID');
   assert.equal(twice.match(/__ccfb\/widget\.js/g).length, 1);
 });
+
+test('injects the serving mode into __CCFB (defaults to static)', () => {
+  assert.ok(injectWidget('<body></body>', 'SID').includes('mode:"static"'));
+  assert.ok(injectWidget('<body></body>', 'SID', 'proxy').includes('mode:"proxy"'));
+});
