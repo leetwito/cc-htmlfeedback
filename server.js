@@ -1,7 +1,7 @@
 // cc-htmlfeedback companion server (connected mode).
 // Serves the app (static --root for now; --proxy added in Phase 4), injects the widget,
 // exposes REST (POST/GET /__ccfb/tickets) + SSE (/__ccfb/events), and watches files:
-//   state.json change  -> push a `tickets` event to the browser
+//   feedback_tasks.json change  -> push a `tickets` event to the browser (page-scoped)
 //   source file change -> push a `reload` event to the browser
 // The session never speaks HTTP; it reads/writes the queue files directly.
 const http = require('node:http');
@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { injectWidget } = require('./lib/inject.js');
-const { QUEUE_DIR, inboxPath, statePath, newTicket } = require('./lib/queue.js');
+const { QUEUE_DIR, pageKey, inboxPath, tasksPath, readTasks, upsertIndex, newTicket } = require('./lib/queue.js');
 
 const MIME = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css',
   '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png',
@@ -19,11 +19,15 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
   fs.mkdirSync(queueDir, { recursive: true });
   root = path.resolve(root);
   widgetPath = widgetPath || path.join(__dirname, 'extension', 'feedback-widget.js');
-  const sseClients = new Set();
 
-  function broadcast(event, data){
+  const sseClients = new Set();                      // each: { res, key }
+  function broadcastTo(key, event, data){
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const res of sseClients) { try { res.write(payload); } catch {} }
+    for (const c of sseClients) if (c.key === key) { try { c.res.write(payload); } catch {} }
+  }
+  function broadcastAll(event, data){
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const c of sseClients) { try { c.res.write(payload); } catch {} }
   }
   function sendJSON(res, code, obj){ res.writeHead(code, {'content-type':'application/json'}); res.end(JSON.stringify(obj)); }
 
@@ -68,20 +72,37 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       req.on('end', () => {
         let fields; try { fields = JSON.parse(body); } catch { return sendJSON(res, 400, { error:'bad json' }); }
         const ticket = newTicket(fields);
-        fs.appendFileSync(inboxPath(queueDir), JSON.stringify(ticket) + '\n');
+        const key = pageKey(fields.page || '');
+        fs.mkdirSync(path.dirname(inboxPath(queueDir, key)), { recursive: true });
+        upsertIndex(queueDir, key, fields.page || '');
+        fs.appendFileSync(inboxPath(queueDir, key), JSON.stringify(ticket) + '\n');
         sendJSON(res, 200, ticket);
       });
       return;
     }
     if (p === '/__ccfb/tickets' && req.method === 'GET') {
-      try { return sendJSON(res, 200, JSON.parse(fs.readFileSync(statePath(queueDir), 'utf8'))); }
-      catch { return sendJSON(res, 200, { version:1, tickets:[] }); }
+      const key = pageKey(url.searchParams.get('page') || '');
+      return sendJSON(res, 200, readTasks(queueDir, key));
+    }
+    if (p === '/__ccfb/clean' && req.method === 'POST') {
+      let body = ''; req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
+      req.on('end', () => {
+        let f; try { f = JSON.parse(body); } catch { return sendJSON(res, 400, { error:'bad json' }); }
+        const key = pageKey(f.page || '');
+        try { fs.mkdirSync(path.dirname(tasksPath(queueDir, key)), { recursive: true });
+          fs.writeFileSync(inboxPath(queueDir, key), '');
+          fs.writeFileSync(tasksPath(queueDir, key), JSON.stringify({ version:1, page: f.page || '', file:'', tickets:[] })); } catch {}
+        broadcastTo(key, 'tickets', readTasks(queueDir, key));
+        sendJSON(res, 200, { ok: true });
+      });
+      return;
     }
     if (p === '/__ccfb/events') {
+      const key = pageKey(url.searchParams.get('page') || '');
       res.writeHead(200, {'content-type':'text/event-stream','cache-control':'no-cache','connection':'keep-alive'});
       res.write('retry: 2000\n\n');
-      sseClients.add(res);
-      req.on('close', () => sseClients.delete(res));
+      const client = { res, key }; sseClients.add(client);
+      req.on('close', () => sseClients.delete(client));
       return;
     }
 
@@ -107,27 +128,28 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
   let reloadTimer = null;
   const watchers = [];
   function watchState(){
-    try { watchers.push(fs.watch(queueDir, (_e, f) => {
-      if (f === 'state.json') {
-        try { broadcast('tickets', JSON.parse(fs.readFileSync(statePath(queueDir),'utf8'))); } catch {}
-      }
+    try { watchers.push(fs.watch(queueDir, { recursive: true }, (_e, f) => {
+      if (!f) return; const parts = f.split(path.sep);
+      if (parts[parts.length - 1] !== 'feedback_tasks.json') return;
+      const key = parts[parts.length - 2];
+      try { broadcastTo(key, 'tickets', readTasks(queueDir, key)); } catch {}
     })); } catch {}
   }
   function watchSource(){
     try { watchers.push(fs.watch(root, { recursive: true }, (_e, f) => {
       if (f && f.split(path.sep).includes(QUEUE_DIR)) return; // ignore our own queue writes
       clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => broadcast('reload', { at: Date.now() }), 150);
+      reloadTimer = setTimeout(() => broadcastAll('reload', { at: Date.now() }), 150);
     })); } catch {}
   }
 
   const handle = {
     get port(){ const a = server.address(); return a && a.port; },
-    sessionId, broadcast,
+    sessionId, broadcast: broadcastAll,
     close(){
       clearTimeout(reloadTimer);
       for (const w of watchers) { try { w.close(); } catch {} }
-      for (const r of sseClients) { try { r.end(); } catch {} }
+      for (const c of sseClients) { try { c.res.end(); } catch {} }
       server.close();
     },
   };
