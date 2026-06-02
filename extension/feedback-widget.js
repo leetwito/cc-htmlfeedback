@@ -13,6 +13,11 @@
 #fb-open:hover{background:#f4f6fb}
 #fb-open svg{width:16px;height:16px}
 #fb-launch .fb-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#103a8e;color:#fff;font:700 11px/18px sans-serif;text-align:center}
+.fb-conn{width:8px;height:8px;border-radius:50%;background:#c2c7d4;flex:0 0 auto}
+.fb-conn.connecting{background:#f0a020}
+.fb-conn.live{background:#1f9d6b;animation:fbconnpulse 2s ease-out infinite}
+@keyframes fbconnpulse{0%{box-shadow:0 0 0 0 rgba(31,157,107,.5)}70%{box-shadow:0 0 0 5px rgba(31,157,107,0)}100%{box-shadow:0 0 0 0 rgba(31,157,107,0)}}
+@media (prefers-reduced-motion:reduce){.fb-conn.live{animation:none}}
 #fb-launch.has .fb-badge{background:#d9402f}
 #fb-quickcopy{display:flex;align-items:center;justify-content:center;padding:9px 11px;border:none;border-left:1px solid #e6e8ef;background:transparent;color:#5b6072;cursor:pointer}
 #fb-quickcopy:hover{background:#f4f6fb;color:#103a8e}
@@ -108,6 +113,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 @media (prefers-reduced-motion:reduce){.fb-mark.fb-working,.fb-mark.strike.fb-working{animation:none;background-color:#ffd43b}}`;
   var FB_MARKUP = `<div id="fb-launch" role="group" aria-label="Feedback">
   <button id="fb-open" type="button" title="Open feedback panel">
+    <span id="fb-conn" class="fb-conn" title="Offline — not connected to a Claude session" aria-hidden="true"></span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     Feedback <span class="fb-badge">0</span>
   </button>
@@ -153,6 +159,15 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   const ta     = document.getElementById('fb-text');
   const countEl= document.getElementById('fb-count');
   const badgeEl= launch.querySelector('.fb-badge');
+  const connEl = document.getElementById('fb-conn');
+  // Connection indicator: live = SSE open to the cc-htmlfeedback session; connecting = (re)connecting; offline = no session.
+  function setConn(state){
+    if(!connEl) return;
+    connEl.className = 'fb-conn' + (state === 'live' ? ' live' : state === 'connecting' ? ' connecting' : '');
+    connEl.title = state === 'live' ? 'Connected — live Claude session is fixing this page'
+      : state === 'connecting' ? 'Connecting to the Claude session…'
+      : 'Offline — not connected to a Claude session';
+  }
   const copyBtn= document.getElementById('fb-copy');
   const quickCopy = document.getElementById('fb-quickcopy');
   const FILE   = (function(){ try { return decodeURIComponent(location.href); } catch(e){ return location.href; } })();
@@ -586,12 +601,15 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   function loadTickets(){ fetch(ccfbBase() + '/__ccfb/tickets?' + pageParam()).then(r => r.json()).then(d => reconcile(d.tickets || [])).catch(() => {}); }
   function subscribeSSE(){
     try {
+      setConn('connecting');
       const es = new EventSource(ccfbBase() + '/__ccfb/events?' + pageParam());
+      es.onopen = () => setConn('live');
+      es.onerror = () => setConn(es.readyState === 2 ? 'offline' : 'connecting');  // 2 = CLOSED; else (re)connecting
       es.addEventListener('tickets', e => { try { reconcile(JSON.parse(e.data).tickets || []); } catch(_){} });
       // File-change events no longer touch the user's tab; the page updates only on a ticket's
       // `done` transition (reconcile → scheduleApply, Task 8). No full reload, ever.
       es.addEventListener('reload', () => {});
-    } catch(e){}
+    } catch(e){ setConn('offline'); }
   }
   function maybeBanner(){
     let dismissed = false; try { dismissed = !!localStorage.getItem('ccfb-banner-dismissed'); } catch(e){}
@@ -609,7 +627,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     b.querySelector('.fb-banner-x').addEventListener('click', function(){ try { localStorage.setItem('ccfb-banner-dismissed','1'); } catch(e){} b.remove(); });
   }
 
-  if(CCFB){ subscribeSSE(); loadTickets(); } else { maybeBanner(); }
+  if(CCFB){ setConn('connecting'); subscribeSSE(); loadTickets(); } else { setConn('offline'); maybeBanner(); }
   render();
 
   }
