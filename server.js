@@ -39,7 +39,7 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
         const chunks = [];
         upRes.on('data', c => chunks.push(c));
         upRes.on('end', () => {
-          const html = injectWidget(Buffer.concat(chunks).toString('utf8'), sessionId);
+          const html = injectWidget(Buffer.concat(chunks).toString('utf8'), sessionId, 'proxy');
           const h = Object.assign({}, upRes.headers);
           delete h['content-length']; delete h['content-encoding']; delete h['transfer-encoding'];
           res.writeHead(upRes.statusCode, h);
@@ -97,7 +97,7 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       const ext = path.extname(filePath);
       if (ext === '.html') {
         res.writeHead(200, {'content-type':'text/html; charset=utf-8'});
-        return res.end(injectWidget(buf.toString('utf8'), sessionId));
+        return res.end(injectWidget(buf.toString('utf8'), sessionId, 'static'));
       }
       res.writeHead(200, {'content-type': MIME[ext] || 'application/octet-stream'});
       res.end(buf);
