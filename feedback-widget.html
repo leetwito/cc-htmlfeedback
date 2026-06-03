@@ -177,7 +177,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   function ccfbPost(t){ return fetch(ccfbBase() + '/__ccfb/tickets', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(t) }); }
   function shortPage(u){ try { const x = new URL(u); return x.pathname + x.search + x.hash; } catch(e){ return u || ''; } }
 
-  const esc = s => (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function openPanel(v){ panel.classList.toggle('open', v); }
   // Publish the control API early — before any throw-prone setup below — so it can never
@@ -275,7 +275,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     ta.focus({ preventScroll: true });   // don't let focus auto-scroll the page (the "jump")
   }
   function clearPending(){ unwrap('pending'); pending = null; }
-  function closePop(){ pop.style.display = 'none'; }
+  function closePop(){ pop.style.display = 'none'; ta.value = ''; }   // clear draft so an Escape-cancelled compose doesn't wedge isComposing()
   function hidePop(){ closePop(); clearPending(); sideManual = false; if(pendingApply){ pendingApply = false; applyMorph(); } }   // re-auto-orient; flush any deferred morph
 
   document.getElementById('fb-side').addEventListener('click', () => {
@@ -354,7 +354,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   function cardHTML(f){
     const q = f.quote.trim() ? esc(f.quote) : '⎵ (insertion point — empty selection)';
     const st = statusOf(f);
-    const pill = st ? '<span class="fb-status ' + stClass(st) + '">' + st.replace('-', ' ') + '</span>' : '';
+    const pill = st ? '<span class="fb-status ' + stClass(st) + '">' + esc(st).replace(/-/g, ' ') + '</span>' : '';
     const pageLbl = (CCFB && f.page) ? '<div class="fb-page" title="' + esc(f.page) + '">' + esc(shortPage(f.page)) + '</div>' : '';
     // In connected mode the note is the submitted instruction (read-only — refine via a new comment, not by editing).
     const note = CCFB
@@ -373,7 +373,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   function applyStatus(card, f){
     if(!CCFB) return;
     const st = statusOf(f), pill = card.querySelector('.fb-status');
-    if(pill){ pill.className = 'fb-status ' + stClass(st); pill.textContent = st.replace('-', ' '); }
+    if(pill){ pill.className = 'fb-status ' + stClass(st); pill.textContent = st.replace(/-/g, ' '); }
     const result = card.querySelector('.fb-result');
     const txt = f.result ? (f.result + (f.files && f.files.length ? ' · ' + f.files.join(', ') : '')) : '';
     if(result){ result.textContent = txt; result.style.display = txt ? 'block' : 'none'; }
@@ -452,6 +452,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     if(f) f.note = note.innerText.trim();          // innerText preserves the user's line breaks
   });
   list.addEventListener('focusout', e => {         // flush a deferred morph once a note edit ends
+    if(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.fb-note')) return;  // focus moved to another note — still composing
     if(e.target.closest && e.target.closest('.fb-note') && pendingApply && !isComposing()){ pendingApply = false; applyMorph(); }
   });
   list.addEventListener('keydown', e => {
@@ -541,7 +542,8 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     const w = document.createTreeWalker(CONTENT, NodeFilter.SHOW_TEXT, null);
     let n;
     while((n = w.nextNode())){
-      if(panel.contains(n) || pop.contains(n) || launch.contains(n)) continue;
+      if(isWidgetEl(n.parentElement)) continue;                          // skip widget chrome (panel/pop/launch/toast)
+      if(n.parentElement && n.parentElement.closest('.fb-mark')) continue; // don't nest a mark inside an existing one
       const idx = n.nodeValue.indexOf(f.quote);
       if(idx < 0) continue;
       try {
@@ -562,6 +564,12 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     tickets.forEach(t => {
       let f = Object.values(store).find(x => x.sid === t.id);
       if(!f){
+        // Adopt a just-submitted local entry whose POST response hasn't set sid yet — avoids
+        // creating a duplicate card + duplicate on-page mark if SSE arrives before the POST resolves.
+        f = Object.values(store).find(x => !x.sid && x.quote === (t.quote || '') && x.note === (t.note || '') && x.page === (t.page || ''));
+        if(f) f.sid = t.id;
+      }
+      if(!f){
         const id = ++uid;
         f = store[id] = { id, sid: t.id, quote: t.quote || '', context: t.context || '', section: t.section || '',
           note: t.note || '', type: t.type || 'comment', page: t.page || '', removed: false };
@@ -577,7 +585,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 
   /* ---- on-done apply: morph the live DOM (static) so the verified change appears without a
      reload, preserving scroll/focus/state. Proxy mode defers to the upstream dev server's HMR. ---- */
-  let pendingApply = false;
+  let pendingApply = false, morphInFlight = false;
   function isWidgetEl(n){ return n && n.nodeType === 1 && (['fb-launch','fb-panel','fb-toast','fb-popover'].includes(n.id) || (n.closest && n.closest('#fb-launch,#fb-panel,#fb-toast,#fb-popover'))); }
   function isComposing(){ const ae = document.activeElement; if(ae === ta && pop.style.display === 'block') return true; if(ae && ae.closest && ae.closest('.fb-note')) return true; if(ta && ta.value && ta.value.trim()) return true; return false; }
   function scheduleApply(){ if(!CCFB || CCFB.mode === 'proxy') return; if(isComposing()){ pendingApply = true; return; } applyMorph(); }
@@ -590,14 +598,18 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     });
   }
   function applyMorph(){
+    if(morphInFlight){ pendingApply = true; return; }   // coalesce — re-run once the current morph finishes
+    morphInFlight = true;
     fetch(location.href, { cache:'no-store' }).then(r => r.text()).then(html => {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       unwrapAllMarks();
       Idiomorph.morph(document.body, doc.body.innerHTML, { morphStyle:'innerHTML', restoreFocus:true, ignoreActiveValue:true,
-        callbacks: { beforeNodeRemoved(n){ if(isWidgetEl(n)) return false; }, beforeNodeMorphed(n){ if(isWidgetEl(n)) return false; } } });
+        callbacks: { beforeNodeRemoved(n){ if(isWidgetEl(n)) return false; },
+          beforeNodeMorphed(n){ if(isWidgetEl(n) || isWidgetEl(n.parentElement)) return false; } } });  // also protect widget text/comment children
       Object.values(store).forEach(f => { if(!f.removed && statusOf(f) !== 'done' && f.quote && f.page === location.href) reanchor(f); });
       render();
-    }).catch(err => console.warn('cc-htmlfeedback: morph failed, leaving page unchanged', err));
+    }).catch(err => console.warn('cc-htmlfeedback: morph failed, leaving page unchanged', err))
+      .finally(() => { morphInFlight = false; if(pendingApply && !isComposing()){ pendingApply = false; applyMorph(); } });
   }
   function pageParam(){ return 'page=' + encodeURIComponent(location.href); }
   function loadTickets(){ fetch(ccfbBase() + '/__ccfb/tickets?' + pageParam()).then(r => r.json()).then(d => reconcile(d.tickets || [])).catch(() => {}); }
@@ -606,7 +618,10 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
       setConn('connecting');
       const es = new EventSource(ccfbBase() + '/__ccfb/events?' + pageParam());
       es.onopen = () => setConn('live');
-      es.onerror = () => setConn(es.readyState === 2 ? 'offline' : 'connecting');  // 2 = CLOSED; else (re)connecting
+      es.onerror = () => {
+        if(es.readyState === 2){ setConn('offline'); try { es.close(); } catch(_){}; setTimeout(subscribeSSE, 5000); }  // CLOSED: browser won't retry — reconnect ourselves
+        else setConn('connecting');                                                                                     // 0 = (re)connecting
+      };
       es.addEventListener('tickets', e => { try { reconcile(JSON.parse(e.data).tickets || []); } catch(_){} });
       // File-change events no longer touch the user's tab; the page updates only on a ticket's
       // `done` transition (reconcile → scheduleApply, Task 8). No full reload, ever.
@@ -629,7 +644,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     b.querySelector('.fb-banner-x').addEventListener('click', function(){ try { localStorage.setItem('ccfb-banner-dismissed','1'); } catch(e){} b.remove(); });
   }
 
-  if(CCFB){ setConn('connecting'); subscribeSSE(); loadTickets(); } else { setConn('offline'); maybeBanner(); }
+  if(CCFB){ subscribeSSE(); loadTickets(); } else { setConn('offline'); maybeBanner(); }   // subscribeSSE sets 'connecting' itself
   render();
 })();
 </script>

@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { injectWidget } = require('./lib/inject.js');
-const { QUEUE_DIR, pageKey, inboxPath, tasksPath, readTasks, upsertIndex, newTicket } = require('./lib/queue.js');
+const { QUEUE_DIR, pageKey, inboxPath, tasksPath, readTasks, upsertIndex, appendTicket, newTicket } = require('./lib/queue.js');
 
 const MIME = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css',
   '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png',
@@ -38,6 +38,7 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
     const target = new URL(req.url, proxy);
     const headers = Object.assign({}, req.headers, { host: target.host, 'accept-encoding': 'identity' });
     const up = lib.request(target, { method: req.method, headers }, upRes => {
+      upRes.on('error', () => { try { res.destroy(); } catch {} });   // upstream dropped mid-response
       const ct = upRes.headers['content-type'] || '';
       if (ct.includes('text/html')) {
         const chunks = [];
@@ -52,9 +53,10 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       } else {
         res.writeHead(upRes.statusCode, upRes.headers);
         upRes.pipe(res);
+        res.on('error', () => { try { upRes.destroy(); } catch {} });  // client dropped mid-pipe
       }
     });
-    up.on('error', e => { res.writeHead(502); res.end('cc-htmlfeedback proxy error: ' + e.message); });
+    up.on('error', e => { try { res.writeHead(502); res.end('cc-htmlfeedback proxy error: ' + e.message); } catch {} });
     req.pipe(up);
   }
 
@@ -73,9 +75,8 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
         let fields; try { fields = JSON.parse(body); } catch { return sendJSON(res, 400, { error:'bad json' }); }
         const ticket = newTicket(fields);
         const key = pageKey(fields.page || '');
-        fs.mkdirSync(path.dirname(inboxPath(queueDir, key)), { recursive: true });
         upsertIndex(queueDir, key, fields.page || '');
-        fs.appendFileSync(inboxPath(queueDir, key), JSON.stringify(ticket) + '\n');
+        appendTicket(queueDir, key, ticket);   // shared write path (mkdir + append) — see lib/queue.js
         sendJSON(res, 200, ticket);
       });
       return;
@@ -89,9 +90,11 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       req.on('end', () => {
         let f; try { f = JSON.parse(body); } catch { return sendJSON(res, 400, { error:'bad json' }); }
         const key = pageKey(f.page || '');
-        try { fs.mkdirSync(path.dirname(tasksPath(queueDir, key)), { recursive: true });
+        try {
+          fs.mkdirSync(path.dirname(tasksPath(queueDir, key)), { recursive: true });
           fs.writeFileSync(inboxPath(queueDir, key), '');
-          fs.writeFileSync(tasksPath(queueDir, key), JSON.stringify({ version:1, page: f.page || '', file:'', tickets:[] })); } catch {}
+          fs.writeFileSync(tasksPath(queueDir, key), JSON.stringify({ version:1, page: f.page || '', file:'', tickets:[] }));
+        } catch (e) { return sendJSON(res, 500, { error: 'clean failed: ' + e.message }); }   // don't report false success
         broadcastTo(key, 'tickets', readTasks(queueDir, key));
         sendJSON(res, 200, { ok: true });
       });
@@ -128,16 +131,18 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
   let reloadTimer = null;
   const watchers = [];
   function watchState(){
+    // Split on both separators — fs.watch may report forward slashes even on Windows.
     try { watchers.push(fs.watch(queueDir, { recursive: true }, (_e, f) => {
-      if (!f) return; const parts = f.split(path.sep);
+      if (!f) return; const parts = f.split(/[/\\]/);
       if (parts[parts.length - 1] !== 'feedback_tasks.json') return;
       const key = parts[parts.length - 2];
       try { broadcastTo(key, 'tickets', readTasks(queueDir, key)); } catch {}
     })); } catch {}
   }
   function watchSource(){
+    const queueDirName = path.relative(root, queueDir);   // ignore our own queue writes, wherever the queue lives
     try { watchers.push(fs.watch(root, { recursive: true }, (_e, f) => {
-      if (f && f.split(path.sep).includes(QUEUE_DIR)) return; // ignore our own queue writes
+      if (f && f.split(/[/\\]/).includes(queueDirName)) return;
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(() => broadcastAll('reload', { at: Date.now() }), 150);
     })); } catch {}
