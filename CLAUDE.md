@@ -34,3 +34,11 @@ Because the skill is global, it launches the tooling by **absolute path** (the s
 `server.js` resolves its own `./lib/*` and `extension/feedback-widget.js` relative to its file
 location, so it runs correctly from any CWD. If you move or rename this repo, update the
 `TOOLING` path in `~/.claude/skills/cc-htmlfeedback/SKILL.md`.
+
+## Releasing — bump the extension version when needed
+
+When you ship a user-facing change to the widget or the extension (new behavior, fixes,
+UX changes), **bump the version** in **both** `extension/manifest.json` and `package.json`
+(keep them in sync, semver). Chrome only treats an extension as updated when `manifest.json`
+`version` increases, so without a bump users keep the old widget. Rebuild (`node build.js`)
+after editing the widget so `extension/feedback-widget.js` + `dist/*` match the source.

@@ -30,7 +30,7 @@ Built once, shipped four ways — all generated from a single source.
 (Browser-internal pages like `chrome://` can't be injected — that's a Chrome restriction.)
 
 ### Try it without installing
-Open `test.html` (a sample document with varied headings, lists, tables, and styled text) in your browser and load the extension — or just paste the contents of `dist/feedback-widget.js` into the DevTools console on that page. It's the manual test fixture used to exercise every feature.
+Open `playground_file.html` (a sample document with varied headings, lists, tables, and styled text) in your browser and load the extension — or just paste the contents of `dist/feedback-widget.js` into the DevTools console on that page. It's the manual test fixture used to exercise every feature.
 
 ## Connected mode — live fixes with Claude Code
 
@@ -72,7 +72,7 @@ node build.js --check   # or: npm run check — exits non-zero on drift, writes 
 feedback-widget.html      ← canonical source for the widget (edit this)
 build.js                  ← regenerates dist/ + extension/feedback-widget.js (node build.js [--check])
 package.json              ← npm run build / check / test / serve
-test.html                 ← manual test fixture (sample document)
+playground_file.html      ← manual test fixture (sample document)
 server.js                 ← connected-mode companion server (--root | --proxy, REST + SSE + file-watch)
 lib/
   queue.js                  inbox.jsonl append / state.json read (the file contract)
