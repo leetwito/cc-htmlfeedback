@@ -18,6 +18,7 @@
 .fb-conn.live{background:#1f9d6b;animation:fbconnpulse 2s ease-out infinite}
 @keyframes fbconnpulse{0%{box-shadow:0 0 0 0 rgba(31,157,107,.5)}70%{box-shadow:0 0 0 5px rgba(31,157,107,0)}100%{box-shadow:0 0 0 0 rgba(31,157,107,0)}}
 @media (prefers-reduced-motion:reduce){.fb-conn.live{animation:none}}
+body.fb-hidden #fb-launch,body.fb-hidden #fb-panel,body.fb-hidden #fb-popover{display:none!important}
 #fb-launch.has .fb-badge{background:#d9402f}
 #fb-quickcopy{display:flex;align-items:center;justify-content:center;padding:9px 11px;border:none;border-left:1px solid #e6e8ef;background:transparent;color:#5b6072;cursor:pointer}
 #fb-quickcopy:hover{background:#f4f6fb;color:#103a8e}
@@ -189,7 +190,16 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   function openPanel(v){ panel.classList.toggle('open', v); }
   // Publish the control API early — before any throw-prone setup below — so it can never
   // be missing while the inject guard (__fbWidgetLoaded / #fb-launch) reports the widget present.
-  window.__fbWidget = { open: function(){ openPanel(true); }, close: function(){ openPanel(false); }, toggle: function(){ openPanel(!panel.classList.contains('open')); } };
+  window.__fbWidget = {
+    open: function(){ openPanel(true); },
+    close: function(){ openPanel(false); },
+    toggle: function(){ openPanel(!panel.classList.contains('open')); },
+    // Hide/show the ENTIRE widget chrome (driven by the extension toolbar icon). Toggling a body
+    // class is reversible and preserves the panel's open/closed state underneath. Returns new visible state.
+    show: function(){ document.body.classList.remove('fb-hidden'); },
+    hide: function(){ document.body.classList.add('fb-hidden'); },
+    toggleVisible: function(){ return !document.body.classList.toggle('fb-hidden'); }
+  };
   document.getElementById('fb-open').addEventListener('click', () => openPanel(!panel.classList.contains('open')));
   document.getElementById('fb-close').addEventListener('click', () => openPanel(false));
   document.getElementById('fb-dock').addEventListener('click', () => document.body.classList.toggle('fb-dock-left'));

@@ -1,6 +1,8 @@
 // cc-htmlfeedback — MV3 service worker.
-// Click the toolbar icon: if the widget isn't on the page yet, inject it and open the panel;
-// if it's already there, just toggle the panel. Uses activeTab (granted on click) — no broad host access.
+// Click the toolbar icon to SHOW/HIDE the whole widget on the page:
+//   - not injected yet → inject the self-contained widget and show it (panel open);
+//   - already present → toggle the entire widget's visibility (hide all chrome / show it again).
+// Uses activeTab (granted on click) — no broad host access.
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id || /^(chrome|edge|about|chrome-extension|devtools):/.test(tab.url || '')) {
@@ -8,21 +10,21 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
   try {
-    // Is the widget already present?
+    // Already present? Toggle the whole widget's visibility.
     const [probe] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
-        if (window.__fbWidget) { window.__fbWidget.toggle(); return true; }
+        if (window.__fbWidget) { window.__fbWidget.toggleVisible(); return true; }
         return false;
       }
     });
-    if (probe && probe.result === true) return; // toggled an existing instance
+    if (probe && probe.result === true) return; // toggled visibility of an existing instance
 
-    // Not present yet — inject the self-contained widget, then open its panel.
+    // Not present yet — inject the self-contained widget, show it, and open its panel.
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['feedback-widget.js'] });
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => { if (window.__fbWidget) window.__fbWidget.open(); }
+      func: () => { if (window.__fbWidget) { window.__fbWidget.show(); window.__fbWidget.open(); } }
     });
   } catch (e) {
     console.error('cc-htmlfeedback injection failed:', e);
