@@ -25,7 +25,7 @@ Built once, shipped four ways — all generated from a single source.
 1. Go to `chrome://extensions`.
 2. Toggle **Developer mode** (top-right) on.
 3. Click **Load unpacked** and select the `extension/` folder.
-4. Pin **cc-htmlfeedback** and click its icon on any normal web page. Click again to toggle the panel.
+4. Pin **cc-htmlfeedback** and click its icon on any normal web page. Click again to **show/hide the whole widget**.
 
 (Browser-internal pages like `chrome://` can't be injected — that's a Chrome restriction.)
 
@@ -34,7 +34,7 @@ Open `playground_file.html` (a sample document with varied headings, lists, tabl
 
 ## Connected mode — live fixes with Claude Code
 
-Standalone mode (above) is **export**: you copy structured feedback and paste it wherever. **Connected mode** removes the copy-paste — comments become a live work queue that your Claude Code session drains: comment → Claude edits the source → the page hot-reloads → a judge agent verifies → the ticket flips to **done**. The sidebar becomes a `todo / in-progress / done` board (one shared list across pages, persisted across sessions).
+Standalone mode (above) is **export**: you copy structured feedback and paste it wherever. **Connected mode** removes the copy-paste — comments become a live work queue that your Claude Code session drains: comment → Claude edits the source → the page **updates in place (DOM morph, no reload)** → verification in a separate tab → the ticket flips to **done**. The sidebar becomes collapsible `in-progress / todo / error / done` sections (a **board per page**, persisted across sessions); a small dot on the launcher shows whether a live session is connected. You can open **several pages at once** and Claude fixes them concurrently. The page you're reading is never reloaded out from under you — scroll, focus, and the current slide are preserved.
 
 **Start it** in the Claude Code session for your project:
 
@@ -46,11 +46,12 @@ Standalone mode (above) is **export**: you copy structured feedback and paste it
 
 This starts the companion server (`server.js`), opens your app in Chrome with the widget injected and connected, and puts the session into a listening loop. Highlight anything, write what you want changed, submit — and watch the ticket go `todo → in-progress → done` as Claude applies and verifies the fix. Git is the undo path.
 
-- **How it talks:** the widget POSTs each comment to the server, which appends it to `.cc-htmlfeedback/inbox.jsonl`. The session owns `.cc-htmlfeedback/state.json` (the board); the server relays state + reload events to the browser over SSE. (Both files are gitignored.)
-- **The judge:** before any ticket is marked `done`, a separate agent opens the page in Chrome and independently verifies the change satisfies the comment and nothing broke — `pass` → done, `fail` → error with the reason.
+- **How it talks:** the widget POSTs each comment to the server, which appends it to that page's `.cc-htmlfeedback/pages/<pagekey>/feedback_inbox.jsonl`. The session is the sole writer of each page's `feedback_tasks.json` (the board); the server relays per-page board updates to the browser over SSE. (The whole `.cc-htmlfeedback/` queue is gitignored.) Per-page boards mean concurrent fixes across files never contend.
+- **Static vs proxy:** in **static** mode the widget applies the verified change by morphing the live DOM (no reload). In **proxy** mode it defers to your dev server's own HMR instead.
+- **One task, one subagent:** each ticket is handled by a fresh subagent that marks it in-progress (the on-page mark pulses), edits the source, verifies in a **separate browser tab** (never your tab), then marks `done` (→ morph) or `error` with a reason.
 - **Standalone still works:** with no server, the extension/bookmarklet behave exactly as before, and a dismissible banner offers a one-click prompt to start the live loop.
 
-Run `node server.js --help`-style flags directly if you prefer: `--root <dir>`, `--proxy <url>`, `--port <n>`.
+Or run the server directly with flags: `node server.js --root <dir>` (static) | `--proxy <url>` (wrap a dev server) | `--port <n>`.
 
 ## Develop / build
 `feedback-widget.html` is the **single source of truth** (style + markup + script). After editing it, regenerate everything:
@@ -75,9 +76,9 @@ package.json              ← npm run build / check / test / serve
 playground_file.html      ← manual test fixture (sample document)
 server.js                 ← connected-mode companion server (--root | --proxy, REST + SSE + file-watch)
 lib/
-  queue.js                  inbox.jsonl append / state.json read (the file contract)
+  queue.js                  per-page paths + pageKey (feedback_inbox.jsonl append / feedback_tasks.json read)
   inject.js                 widget injection into served HTML
-  watch-inbox.js            event-driven "block until a new ticket" for the loop
+  watch-inbox.js            event-driven "block until a new comment" for the loop
 test/                     ← node:test suites (queue, inject, server, watch-inbox)
 dist/
   feedback-widget.js        drop-in script
@@ -86,18 +87,19 @@ dist/
   favicon.png / favicon.ico
 extension/
   manifest.json             MV3, activeTab + scripting (injects on toolbar click only)
-  background.js             service worker: inject-or-toggle
+  background.js             service worker: inject, or show/hide the whole widget
   feedback-widget.js        synced from dist
   icons/                    icon.svg + icon16/48/128.png
-.claude/skills/cc-htmlfeedback/
-  SKILL.md                  the /cc-htmlfeedback loop (drain tickets → fix → reload → judge → done)
-  judge-prompt.md           independent verification agent prompt
 ```
+
+The `/cc-htmlfeedback` Claude Code skill (`SKILL.md`, `task-workflow.md`, `judge-prompt.md`) is
+installed at **user level** (`~/.claude/skills/cc-htmlfeedback/`), not in this repo — so the loop
+is available from any project. See `CLAUDE.md` for how it reaches this repo's server/widget.
 
 ## Notes
 - Engineering: namespaced `fb-*` CSS (no Shadow DOM — assumes non-hostile pages). Marks inherit host typography (font/spacing) but force a fixed dark text color so highlights stay legible even inside gradient/`background-clip:text` parents. The panel/popover sit at a very high `z-index` to clear common host overlays (cookie banners, chat widgets).
 - Accessibility: the panel is an `aria-label`led region, the toast is an `aria-live` status, the notes list uses `list`/`listitem` roles, and icon-only buttons carry `aria-label`s. Note *creation* is still mouse-driven (select text → popover) — keyboard-triggered selection is a known gap.
-- State lives in memory only — **Copy** is the export path, so copy before reloading. (Per-URL persistence is on the roadmap.)
+- In standalone mode, state lives in memory only — **Copy** is the export path, so copy before reloading. In connected mode, tickets persist per page on disk (`feedback_tasks.json`) and survive restarts.
 
 ## License
 MIT — see [LICENSE](LICENSE).
