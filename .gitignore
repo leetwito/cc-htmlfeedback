@@ -16,3 +16,6 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# Internal design docs / planning (kept locally, not published)
+docs/superpowers/

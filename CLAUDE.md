@@ -26,7 +26,7 @@ whatever web app you're working on — not only when your CWD is this repo.
 ### How the user-level skill reaches this repo's tooling
 
 Because the skill is global, it launches the tooling by **absolute path** (the skill defines
-`TOOLING = /Users/leetwito/PycharmProjects/cc-htmlfeedback`):
+`TOOLING = <absolute path to your local clone of this repo>`):
 
 - `node $TOOLING/server.js --root <dir> --port <port>` (or `--proxy <url>`)
 - `node $TOOLING/lib/watch-inbox.js <QUEUE> <lineCount> <timeoutMs>`
