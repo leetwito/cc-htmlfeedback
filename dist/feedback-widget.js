@@ -13,7 +13,7 @@
 #fb-open:hover{background:#f4f6fb}
 #fb-open svg{width:16px;height:16px}
 #fb-launch .fb-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#103a8e;color:#fff;font:700 11px/18px sans-serif;text-align:center}
-.fb-conn{width:8px;height:8px;border-radius:50%;background:#c2c7d4;flex:0 0 auto}
+.fb-conn{width:8px;height:8px;border-radius:50%;background:#d9402f;flex:0 0 auto}
 .fb-conn.connecting{background:#f0a020}
 .fb-conn.live{background:#1f9d6b;animation:fbconnpulse 2s ease-out infinite}
 @keyframes fbconnpulse{0%{box-shadow:0 0 0 0 rgba(31,157,107,.5)}70%{box-shadow:0 0 0 5px rgba(31,157,107,0)}100%{box-shadow:0 0 0 0 rgba(31,157,107,0)}}
@@ -114,7 +114,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 @media (prefers-reduced-motion:reduce){.fb-mark.fb-working,.fb-mark.strike.fb-working{animation:none;background-color:#ffd43b}}`;
   var FB_MARKUP = `<div id="fb-launch" role="group" aria-label="Feedback">
   <button id="fb-open" type="button" title="Open feedback panel">
-    <span id="fb-conn" class="fb-conn" title="Offline — not connected to a Claude session" aria-hidden="true"></span>
+    <span id="fb-conn" class="fb-conn" title="Run /cc-htmlfeedback on Claude Code for auto fixes" aria-hidden="true"></span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     Feedback <span class="fb-badge">0</span>
   </button>
@@ -167,7 +167,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     connEl.className = 'fb-conn' + (state === 'live' ? ' live' : state === 'connecting' ? ' connecting' : '');
     connEl.title = state === 'live' ? 'Connected — live Claude session is fixing this page'
       : state === 'connecting' ? 'Connecting to the Claude session…'
-      : 'Offline — not connected to a Claude session';
+      : 'Run /cc-htmlfeedback on Claude Code for auto fixes';
   }
   const copyBtn= document.getElementById('fb-copy');
   const quickCopy = document.getElementById('fb-quickcopy');
