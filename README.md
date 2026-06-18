@@ -11,22 +11,15 @@ A zero-dependency, in-page feedback tool. Highlight text on any page to leave co
 
 ## Install
 
-Pick one of four ways to load the widget. The **Chrome extension** is the easiest.
+The widget loads as a Chrome extension. That's the way to use it.
 
-### Chrome extension (recommended)
+### Chrome extension
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `extension/` folder.
 4. Pin the icon, then click it on any page to show/hide the widget.
 
 > Chrome blocks injection on internal pages (`chrome://`, the Web Store, etc.) - that's a browser restriction.
-
-### Other ways
-| Mode | How |
-|---|---|
-| **Bookmarklet** | Open `dist/install-bookmarklet.html`, drag the button to your bookmarks bar, click it on any page. |
-| **Drop-in script** | Copy `dist/feedback-widget.js` next to your page, add `<script src="feedback-widget.js"></script>`. |
-| **Inline** | Paste the contents of `feedback-widget.html` before `</body>` (fully self-contained). |
 
 ### Try it first
 Open `playground_file.html` in your browser and load the extension to play with every feature on a sample document.
