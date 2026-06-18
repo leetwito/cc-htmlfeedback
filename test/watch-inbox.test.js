@@ -12,5 +12,7 @@ test('wakes (exits) when ANY page inbox changes anywhere in the tree', async () 
   fs.appendFileSync(path.join(dir, 'pages', 'aaaaaaaaaaaa', 'feedback_inbox.jsonl'), '{"id":"x"}\n');
   const code = await new Promise(r => proc.on('exit', r));
   assert.equal(code, 0);
-  assert.match(out, /aaaaaaaaaaaa/);
+  // The watcher no longer prints the changed path — it prints a single 'inbox-grew' marker
+  // and the session re-scans every page on wake. Assert the actual marker contract.
+  assert.equal(out.trim(), 'inbox-grew');
 });

@@ -109,7 +109,9 @@ test('SSE pushes a tickets event when feedback_tasks.json changes', async () => 
       const { value, done } = await reader.read();
       if (done) break;
       buf += Buffer.from(value).toString('utf8');
-      if (buf.includes('event: tickets')) break;
+      // The server sends an initial (empty) tickets resync on connect, so don't stop on the
+      // first `event: tickets` — wait until the board state we wrote is actually broadcast.
+      if (buf.includes('"done"')) break;
     }
     ctrl.abort();
     assert.ok(buf.includes('event: tickets'), 'received tickets SSE event');

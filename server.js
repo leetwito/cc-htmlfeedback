@@ -105,6 +105,9 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
       res.writeHead(200, {'content-type':'text/event-stream','cache-control':'no-cache','connection':'keep-alive'});
       res.write('retry: 2000\n\n');
       const client = { res, key }; sseClients.add(client);
+      // Sync current board state to the just-connected (or reconnected) widget, so it
+      // never sits on a stale "todo" if it missed a change event.
+      try { client.res.write(`event: tickets\ndata: ${JSON.stringify(readTasks(queueDir, key))}\n\n`); } catch {}
       req.on('close', () => sseClients.delete(client));
       return;
     }
@@ -131,13 +134,29 @@ function startServer({ root, queueDir, port = 0, sessionId = crypto.randomUUID()
   let reloadTimer = null;
   const watchers = [];
   function watchState(){
-    // Split on both separators — fs.watch may report forward slashes even on Windows.
-    try { watchers.push(fs.watch(queueDir, { recursive: true }, (_e, f) => {
-      if (!f) return; const parts = f.split(/[/\\]/);
-      if (parts[parts.length - 1] !== 'feedback_tasks.json') return;
-      const key = parts[parts.length - 2];
-      try { broadcastTo(key, 'tickets', readTasks(queueDir, key)); } catch {}
-    })); } catch {}
+    // Poll the per-page boards instead of fs.watch: macOS recursive fs.watch does NOT
+    // reliably fire for files inside subdirectories created AFTER the watch attaches, and
+    // the pages/<key>/ dirs are created lazily on the first comment. Polling these small
+    // JSON files every second is cheap and fully watch-independent.
+    const pagesDir = path.join(queueDir, 'pages');
+    const lastSeen = new Map();
+    // prime=true on the startup pass records pre-existing boards WITHOUT broadcasting (so a
+    // reconnecting client isn't spammed with stale state). On every later tick, any board that
+    // is new OR changed is a real update worth pushing — including a page whose board is first
+    // created after a client already connected (else that client would miss its first update).
+    const tick = (prime) => {
+      let keys; try { keys = fs.readdirSync(pagesDir); } catch { return; }
+      for (const key of keys) {
+        let cur;
+        try { cur = fs.readFileSync(path.join(pagesDir, key, 'feedback_tasks.json'), 'utf8'); } catch { continue; }
+        if (lastSeen.get(key) === cur) continue;
+        lastSeen.set(key, cur);
+        if (!prime) { try { broadcastTo(key, 'tickets', JSON.parse(cur)); } catch {} }
+      }
+    };
+    tick(true);                               // prime existing state without broadcasting
+    const id = setInterval(() => tick(false), 1000);
+    watchers.push({ close: () => clearInterval(id) });
   }
   function watchSource(){
     const queueDirName = path.relative(root, queueDir);   // ignore our own queue writes, wherever the queue lives
