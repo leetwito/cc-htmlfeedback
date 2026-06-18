@@ -1,12 +1,10 @@
 #!/usr/bin/env node
-/* Build the distributable artifacts from the canonical source `feedback-widget.html`.
- *   node build.js          — regenerate all outputs
- *   node build.js --check  — verify on-disk outputs match source; exit 1 on drift, write nothing
- * Outputs:
- *   dist/feedback-widget.js        — standalone, self-injecting (drop-in <script>)
- *   dist/feedback-bookmarklet.txt  — javascript: URL (inlined, no hosting needed)
- *   dist/install-bookmarklet.html  — drag-to-bookmarks-bar installer
- *   extension/feedback-widget.js   — synced copy used by the Chrome extension
+/* Build the Chrome-extension widget from the canonical source `feedback-widget.html`.
+ *   node build.js          — regenerate the output
+ *   node build.js --check  — verify the on-disk output matches source; exit 1 on drift, write nothing
+ * Output:
+ *   extension/feedback-widget.js   — self-injecting widget used by the Chrome extension
+ *                                    (also the copy server.js injects in live mode)
  */
 const fs = require('fs');
 const path = require('path');
@@ -37,9 +35,7 @@ if (css.length < 100 || markup.length < 100 || body.length < 100) {
 }
 const esc = s => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 
-const js = `/*! feedback-widget.js — standalone, self-injecting in-page feedback tool.
- * Usage (pages you author):   <script src="feedback-widget.js"></script>
- *   ...or paste this whole file inside a <script> tag, or use the bookmarklet / extension build.
+const js = `/*! feedback-widget.js — self-injecting in-page feedback tool, loaded by the Chrome extension.
  * No dependencies. Anchors to document.body so the whole page is annotatable.
  * Notes live in memory only — use "Copy feedback" / quick-copy to export (includes the file path).
  * GENERATED from feedback-widget.html by build.js — edit the .html, then re-run build.js.
@@ -60,26 +56,9 @@ ${body}
 })();
 `;
 
-const bm = 'javascript:' + encodeURIComponent(js);
-
-const install = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="favicon.png"><title>Install the Feedback bookmarklet</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:640px;margin:48px auto;padding:0 20px;line-height:1.65;color:#1a1a2e}
-a.bm{display:inline-block;background:#103a8e;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700;box-shadow:0 4px 14px rgba(20,20,40,.18)}
-ol{padding-left:20px}</style></head><body>
-<h1>Feedback tool — bookmarklet</h1>
-<ol><li><b>Show your bookmarks bar</b> (Cmd/Ctrl+Shift+B).</li><li><b>Drag this button onto it:</b></li></ol>
-<p><a class="bm" href="${bm.replace(/"/g, '&quot;')}">📝 Feedback</a></p>
-<p>Then open <b>any</b> web page and click the bookmark — the feedback tool appears top-right. Highlight text to comment/strike; <b>Copy feedback</b> exports all notes (including the page URL).</p>
-<p style="color:#5b6072;font-size:14px">Notes live in memory only and clear on reload — copy before leaving the page.</p>
-</body></html>`;
-
-// All outputs are pure functions of the source — compute first, then write atomically.
+// The output is a pure function of the source — compute first, then write atomically.
 const outputs = [
-  ['dist/feedback-widget.js', js],
   ['extension/feedback-widget.js', js],
-  ['dist/feedback-bookmarklet.txt', bm],
-  ['dist/install-bookmarklet.html', install],
 ];
 
 if (check) {
@@ -96,11 +75,10 @@ if (check) {
 
 // The extension dir is hand-maintained (manifest.json, icons) — never auto-create it.
 if (!fs.existsSync(path.join(root, 'extension'))) fail('extension/ directory not found — expected a hand-maintained dir with manifest.json');
-fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 try {
   for (const [rel, content] of outputs) fs.writeFileSync(path.join(root, rel), content);
 } catch (e) {
-  fail('failed writing outputs (partial build may remain): ' + e.message);
+  fail('failed writing output (partial build may remain): ' + e.message);
 }
 
-console.log('Built dist/feedback-widget.js (' + js.length + 'B), dist/feedback-bookmarklet.txt (' + bm.length + 'B), dist/install-bookmarklet.html, extension/feedback-widget.js');
+console.log('Built extension/feedback-widget.js (' + js.length + 'B)');

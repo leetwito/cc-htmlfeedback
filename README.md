@@ -41,8 +41,8 @@ Highlight anything, write what you want changed, submit - then watch the ticket 
 `feedback-widget.html` is the single source of truth. After editing it, regenerate the four outputs:
 
 ```bash
-npm run build     # writes dist/* and syncs extension/feedback-widget.js
-npm run check     # verify outputs are in sync (no writes; non-zero on drift)
+npm run build     # regenerates extension/feedback-widget.js from the source
+npm run check     # verify the output is in sync (no writes; non-zero on drift)
 ```
 
 ## License

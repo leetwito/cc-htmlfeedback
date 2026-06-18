@@ -41,4 +41,4 @@ When you ship a user-facing change to the widget or the extension (new behavior,
 UX changes), **bump the version** in **both** `extension/manifest.json` and `package.json`
 (keep them in sync, semver). Chrome only treats an extension as updated when `manifest.json`
 `version` increases, so without a bump users keep the old widget. Rebuild (`node build.js`)
-after editing the widget so `extension/feedback-widget.js` + `dist/*` match the source.
+after editing the widget so `extension/feedback-widget.js` matches the source.

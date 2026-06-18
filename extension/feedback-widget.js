@@ -1,6 +1,4 @@
-/*! feedback-widget.js — standalone, self-injecting in-page feedback tool.
- * Usage (pages you author):   <script src="feedback-widget.js"></script>
- *   ...or paste this whole file inside a <script> tag, or use the bookmarklet / extension build.
+/*! feedback-widget.js — self-injecting in-page feedback tool, loaded by the Chrome extension.
  * No dependencies. Anchors to document.body so the whole page is annotatable.
  * Notes live in memory only — use "Copy feedback" / quick-copy to export (includes the file path).
  * GENERATED from feedback-widget.html by build.js — edit the .html, then re-run build.js.
