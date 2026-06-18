@@ -15,9 +15,10 @@
 #fb-launch .fb-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#103a8e;color:#fff;font:700 11px/18px sans-serif;text-align:center}
 .fb-conn{width:8px;height:8px;border-radius:50%;background:#d9402f;flex:0 0 auto}
 .fb-conn.connecting{background:#f0a020}
-.fb-conn.live{background:#1f9d6b;animation:fbconnpulse 2s ease-out infinite}
-@keyframes fbconnpulse{0%{box-shadow:0 0 0 0 rgba(31,157,107,.5)}70%{box-shadow:0 0 0 5px rgba(31,157,107,0)}100%{box-shadow:0 0 0 0 rgba(31,157,107,0)}}
-@media (prefers-reduced-motion:reduce){.fb-conn.live{animation:none}}
+.fb-conn.live{background:#1f9d6b}
+.fb-conn.working{background:#1257c4;animation:fbconnworking 1.2s ease-in-out infinite}
+@keyframes fbconnworking{0%{box-shadow:0 0 0 0 rgba(18,87,196,.55)}70%{box-shadow:0 0 0 5px rgba(18,87,196,0)}100%{box-shadow:0 0 0 0 rgba(18,87,196,0)}}
+@media (prefers-reduced-motion:reduce){.fb-conn.working{animation:none}}
 body.fb-hidden #fb-launch,body.fb-hidden #fb-panel,body.fb-hidden #fb-popover{display:none!important}
 #fb-launch.has .fb-badge{background:#d9402f}
 #fb-quickcopy{display:flex;align-items:center;justify-content:center;padding:9px 11px;border:none;border-left:1px solid #e6e8ef;background:transparent;color:#5b6072;cursor:pointer}
@@ -64,7 +65,10 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
 /* connected mode: status pill, page label, result, banner */
 .fb-status{display:inline-block;margin-bottom:6px;font:700 9px/1.4 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:999px}
 .fb-st-todo{background:#eef1f4;color:#5b6072}
-.fb-st-inprogress{background:#e7f0ff;color:#1257c4}
+.fb-st-inprogress{background:#e7f0ff;color:#1257c4;display:inline-flex;align-items:center;gap:5px;vertical-align:middle}
+.fb-st-inprogress:before{content:"";width:6px;height:6px;border-radius:50%;background:#1257c4;flex:0 0 auto;animation:fbpillpulse 1.1s ease-in-out infinite}
+@keyframes fbpillpulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+@media (prefers-reduced-motion:reduce){.fb-st-inprogress:before{animation:none;opacity:1}}
 .fb-st-done{background:#e3f6ec;color:#1f9d6b}
 .fb-st-error{background:#fdeceb;color:#c0392b}
 .fb-page{font:600 10px/1.3 ui-monospace,Menlo,monospace;color:#8a90a2;margin-bottom:4px;word-break:break-all}
@@ -161,14 +165,27 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
   const countEl= document.getElementById('fb-count');
   const badgeEl= launch.querySelector('.fb-badge');
   const connEl = document.getElementById('fb-conn');
-  // Connection indicator: live = SSE open to the cc-htmlfeedback session; connecting = (re)connecting; offline = no session.
-  function setConn(state){
+  // Connection indicator: two layers. `connState` is the SSE socket (offline / connecting / live).
+  // On top of `live` we derive a "working" sub-state from whether THIS page has any in-progress
+  // ticket — so the dot reads not-connected (red) → connected-idle (steady green) →
+  // connected-working (pulsing blue). SSE is page-scoped, so "working" correctly means the agent
+  // is fixing a comment that belongs to this page. paintConn() is re-run from render() on every
+  // ticket update, so the idle↔working flip is live.
+  let connState = 'offline';
+  function inProgressCount(){ return CCFB ? visibleItems().filter(f => statusOf(f) === 'in-progress').length : 0; }
+  function paintConn(){
     if(!connEl) return;
-    connEl.className = 'fb-conn' + (state === 'live' ? ' live' : state === 'connecting' ? ' connecting' : '');
-    connEl.title = state === 'live' ? 'Connected — live Claude session is fixing this page'
-      : state === 'connecting' ? 'Connecting to the Claude session…'
+    const n = connState === 'live' ? inProgressCount() : 0;
+    const working = n > 0;
+    connEl.className = 'fb-conn'
+      + (connState === 'live' ? ' live' : connState === 'connecting' ? ' connecting' : '')
+      + (working ? ' working' : '');
+    connEl.title = working ? ('Claude is working on ' + n + ' comment' + (n === 1 ? '' : 's') + ' on this page')
+      : connState === 'live' ? 'Connected — Claude session is idle (no comments in progress)'
+      : connState === 'connecting' ? 'Connecting to the Claude session…'
       : 'Run /cc-htmlfeedback on Claude Code for auto fixes';
   }
+  function setConn(state){ connState = state; paintConn(); }
   const copyBtn= document.getElementById('fb-copy');
   const quickCopy = document.getElementById('fb-quickcopy');
   const FILE   = (function(){ try { return decodeURIComponent(location.href); } catch(e){ return location.href; } })();
@@ -444,6 +461,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
     badgeEl.textContent = outstanding;
     launch.classList.toggle('has', outstanding > 0);
     empty.style.display = vis.length ? 'none' : 'block';   // list still shows done as history
+    paintConn();                                           // refresh idle↔working on every ticket change
   }
 
   // One delegated listener per event type — no per-card binding, so incremental updates never churn handlers.
@@ -581,7 +599,7 @@ body.fb-dock-left #fb-launch{left:16px;right:auto}
         const id = ++uid;
         f = store[id] = { id, sid: t.id, quote: t.quote || '', context: t.context || '', section: t.section || '',
           note: t.note || '', type: t.type || 'comment', page: t.page || '', removed: false };
-        if(t.page === location.href && f.quote) reanchor(f);
+        if(t.page === location.href && f.quote && t.status !== 'done') reanchor(f);  // never highlight an already-done ticket on first sight
       }
       const was = f.status;
       f.status = t.status; f.result = t.result || ''; f.files = t.files || [];

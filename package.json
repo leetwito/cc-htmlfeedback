@@ -1,6 +1,6 @@
 {
   "name": "cc-htmlfeedback",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A self-contained, dependency-free in-page feedback tool. Highlight text on any page to leave comments and strikethrough suggestions, then copy structured feedback (with the page URL) to share.",
   "keywords": ["feedback", "annotation", "chrome-extension", "bookmarklet", "review", "highlight"],
   "homepage": "https://github.com/leetwito/cc-htmlfeedback#readme",
