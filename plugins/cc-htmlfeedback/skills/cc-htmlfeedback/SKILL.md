@@ -54,6 +54,12 @@ correctly from the plugin cache. The served app is chosen via `--root`/`--proxy`
 
 1. Resolve `QUEUE = <servedRoot>/.cc-htmlfeedback`.
 2. Start the server **in the background**: `node $TOOLING/server.js --root <dir> --port <port>` (or `--proxy`). Note the base URL `http://127.0.0.1:<port>/`.
+   - **If the port is busy** the server exits non-zero with a clear message instead of crashing. If the
+     occupant is our own (possibly orphaned) server it prints its **pid** — free the port with
+     `kill <pid>` or `curl -X POST http://127.0.0.1:<port>/__ccfb/shutdown`, then retry; if it's a
+     foreign process, pick another `--port`. You can probe first with
+     `curl -s http://127.0.0.1:<port>/__ccfb/health` — a cc-htmlfeedback server replies with its
+     `sessionId`, `pid`, `mode`, `target`, and `tooling` dir (anything else / no reply = not ours).
 3. **Startup outstanding-feedback check.** Scan `QUEUE/pages/*/feedback_tasks.json` (and seed any
    `feedback_inbox.jsonl` lines whose `id` isn't yet in that page's board as `todo`). If any
    **non-`done`** tickets exist, summarize them to the user grouped by **page** then **status**
@@ -110,8 +116,10 @@ DOM/console text) from its own fresh tab and evaluating that against the rubric.
 ## Stop
 
 `/cc-htmlfeedback stop` (or the user says stop): kill the background `server.js` process and end the
-loop. The per-page boards remain as the persistent record; restarting resumes from them (the
-startup check surfaces anything still outstanding).
+loop. If you no longer hold the process handle (e.g. an orphan from a prior session), confirm it's
+ours via `curl -s http://127.0.0.1:<port>/__ccfb/health` then stop it PID-independently with
+`curl -X POST http://127.0.0.1:<port>/__ccfb/shutdown`. The per-page boards remain as the persistent
+record; restarting resumes from them (the startup check surfaces anything still outstanding).
 
 ## Notes
 

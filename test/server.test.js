@@ -145,3 +145,39 @@ test('POST /__ccfb/clean truncates only the target page board+inbox', async () =
   assert.deepEqual(JSON.parse(fs.readFileSync(tp(queueDir, pk(page)), 'utf8')).tickets, []);
   await close();
 });
+
+test('GET /__ccfb/health identifies the server and where it was launched from', async () => {
+  const { base, srv, close } = await start();
+  const h = await (await fetch(base + '/__ccfb/health')).json();
+  assert.equal(h.server, 'cc-htmlfeedback');
+  assert.equal(h.sessionId, 'SID');
+  assert.equal(h.port, srv.port);
+  assert.equal(h.mode, 'static');
+  assert.equal(typeof h.pid, 'number');
+  assert.ok(h.tooling && h.tooling.length, 'reports its tooling dir');
+  await close();
+});
+
+test('POST /__ccfb/shutdown stops the server (PID-independent kill)', async () => {
+  const { base, close } = await start();
+  const r = await fetch(base + '/__ccfb/shutdown', { method:'POST' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).ok, true);
+  await new Promise(res => setTimeout(res, 200));   // shutdown closes ~50ms after responding
+  await assert.rejects(fetch(base + '/__ccfb/health'), 'server is no longer reachable');
+  await close();   // idempotent — already closed
+});
+
+test('startServer rejects with EADDRINUSE when the port is already taken', async () => {
+  const root = tmpRoot();
+  const queueDir = path.join(root, '.cc-htmlfeedback');
+  const srv1 = await startServer({ root, queueDir, port: 0, sessionId: 'A', widgetPath: __filename });
+  try {
+    await assert.rejects(
+      startServer({ root, queueDir, port: srv1.port, sessionId: 'B', widgetPath: __filename }),
+      err => err.code === 'EADDRINUSE',
+    );
+  } finally {
+    srv1.close();
+  }
+});
