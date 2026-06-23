@@ -2,9 +2,11 @@
 /* Build the Chrome-extension widget from the canonical source `feedback-widget.html`.
  *   node build.js          — regenerate the output
  *   node build.js --check  — verify the on-disk output matches source; exit 1 on drift, write nothing
- * Output:
- *   extension/feedback-widget.js   — self-injecting widget used by the Chrome extension
- *                                    (also the copy server.js injects in live mode)
+ * Outputs:
+ *   extension/feedback-widget.js              — self-injecting widget for the Chrome extension
+ *   plugins/cc-htmlfeedback/feedback-widget.js — same widget, injected by the bundled server
+ *   plugins/cc-htmlfeedback/{server.js,lib/*} — verbatim copies so the plugin is self-contained
+ * The plugin copies are build artifacts (canonical sources stay at the repo root); --check flags drift.
  */
 const fs = require('fs');
 const path = require('path');
@@ -56,10 +58,21 @@ ${body}
 })();
 `;
 
-// The output is a pure function of the source — compute first, then write atomically.
+const PLUGIN = 'plugins/cc-htmlfeedback';
+
+// Generated text outputs (pure function of feedback-widget.html).
 const outputs = [
-  ['extension/feedback-widget.js', js],
+  ['extension/feedback-widget.js', js],   // Chrome extension
+  [PLUGIN + '/feedback-widget.js', js],   // injected by the bundled server in the plugin
 ];
+
+// Files mirrored verbatim into the plugin so it is a self-contained, installable bundle.
+// (A-lite: server.js + lib/ stay canonical at the repo root; the plugin copies are build
+// artifacts — never hand-edit them; `--check` flags drift.)
+const copies = [['server.js', PLUGIN + '/server.js']];
+for (const f of fs.readdirSync(path.join(root, 'lib'))) {
+  if (f.endsWith('.js')) copies.push(['lib/' + f, PLUGIN + '/lib/' + f]);
+}
 
 if (check) {
   let drift = 0;
@@ -68,17 +81,25 @@ if (check) {
     const cur = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
     if (cur !== content) { console.error('DRIFT: ' + rel + (cur === null ? ' (missing)' : ' (out of sync with feedback-widget.html)')); drift++; }
   }
+  for (const [srcRel, dstRel] of copies) {
+    const want = fs.readFileSync(path.join(root, srcRel), 'utf8');
+    const dp = path.join(root, dstRel);
+    const cur = fs.existsSync(dp) ? fs.readFileSync(dp, 'utf8') : null;
+    if (cur !== want) { console.error('DRIFT: ' + dstRel + (cur === null ? ' (missing)' : ' (out of sync with ' + srcRel + ')')); drift++; }
+  }
   if (drift) fail(drift + ' file(s) out of sync — run `node build.js`');
-  console.log('build.js --check: all ' + outputs.length + ' outputs in sync with feedback-widget.html');
+  console.log('build.js --check: all ' + (outputs.length + copies.length) + ' plugin/extension outputs in sync');
   process.exit(0);
 }
 
 // The extension dir is hand-maintained (manifest.json, icons) — never auto-create it.
 if (!fs.existsSync(path.join(root, 'extension'))) fail('extension/ directory not found — expected a hand-maintained dir with manifest.json');
 try {
+  fs.mkdirSync(path.join(root, PLUGIN, 'lib'), { recursive: true });
   for (const [rel, content] of outputs) fs.writeFileSync(path.join(root, rel), content);
+  for (const [srcRel, dstRel] of copies) fs.copyFileSync(path.join(root, srcRel), path.join(root, dstRel));
 } catch (e) {
   fail('failed writing output (partial build may remain): ' + e.message);
 }
 
-console.log('Built extension/feedback-widget.js (' + js.length + 'B)');
+console.log('Built extension/feedback-widget.js + assembled ' + PLUGIN + '/ (' + (outputs.length + copies.length) + ' files, widget ' + js.length + 'B)');

@@ -26,7 +26,16 @@ Open `playground_file.html` in your browser and load the extension to play with 
 
 ## Live mode with Claude Code
 
-Skip the copy-paste: comments become tickets that Claude Code applies and verifies for you. Run this in your project's Claude Code session:
+Skip the copy-paste: comments become tickets that Claude Code applies and verifies for you.
+
+Install the plugin once (it bundles the skill plus the server it runs):
+
+```
+/plugin marketplace add leetwito/cc-htmlfeedback
+/plugin install cc-htmlfeedback@cc-htmlfeedback
+```
+
+Then, in your project's Claude Code session:
 
 ```
 /cc-htmlfeedback                          # serve the current dir on :4317
@@ -38,11 +47,12 @@ Highlight anything, write what you want changed, submit - then watch the ticket 
 
 ## Build
 
-`feedback-widget.html` is the single source of truth. After editing it, regenerate the four outputs:
+`feedback-widget.html` is the single source of truth for the widget. `build.js` regenerates the
+Chrome-extension widget and assembles the bundled plugin (`plugins/cc-htmlfeedback/`):
 
 ```bash
-npm run build     # regenerates extension/feedback-widget.js from the source
-npm run check     # verify the output is in sync (no writes; non-zero on drift)
+npm run build     # build extension/feedback-widget.js + assemble plugins/cc-htmlfeedback/
+npm run check     # verify all outputs are in sync (no writes; non-zero on drift)
 ```
 
 ## License

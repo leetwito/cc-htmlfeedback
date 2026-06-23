@@ -4,41 +4,46 @@ This repo is the **runtime tooling** for the `cc-htmlfeedback` live-feedback loo
 `server.js` (serves the user's app with the feedback widget injected), `lib/` (inject, queue,
 watch-inbox helpers), and `extension/feedback-widget.js` (the widget itself, built via `build.js`).
 
-## The skill lives at USER level — not in this repo
+## The skill ships as a bundled plugin in this repo
 
-The `/cc-htmlfeedback` skill was moved out of `.claude/skills/` here and now lives at:
+This repo is **both** a Claude Code plugin marketplace and the single source of truth for the
+`/cc-htmlfeedback` skill. Layout:
 
 ```
-~/.claude/skills/cc-htmlfeedback/
-  ├── SKILL.md         ← canonical skill instructions
-  └── judge-prompt.md  ← verification-judge prompt
+.claude-plugin/marketplace.json          ← marketplace (lists the one plugin)
+plugins/cc-htmlfeedback/                  ← the installable plugin
+  .claude-plugin/plugin.json
+  skills/cc-htmlfeedback/                 ← canonical skill source — EDIT HERE
+    SKILL.md  task-workflow.md  judge-prompt.md
+  server.js  lib/  feedback-widget.js     ← assembled by `node build.js` (do NOT hand-edit)
 ```
 
-**Maintain the skill there, directly.** Do not recreate a `.claude/skills/cc-htmlfeedback/`
-copy in this repo — the user-level folder is the single source of truth. Edits to the skill's
-behavior, arguments, or the judge prompt go into the user-level files.
+**Edit the skill** in `plugins/cc-htmlfeedback/skills/cc-htmlfeedback/`. The skill resolves its
+tooling via `TOOLING = ${CLAUDE_PLUGIN_ROOT}` (the installed plugin dir), so it works on any
+machine with no absolute paths.
 
-### Why it's user-level
+**`server.js` + `lib/` stay canonical at the repo root** (where `npm run serve`/`test` point).
+`node build.js` mirrors them - plus the built widget - into `plugins/cc-htmlfeedback/` so the
+plugin is self-contained. Those plugin copies are **build artifacts**: never edit them directly,
+and run `build.js` after changing the server, lib, or widget. `node build.js --check` flags drift.
 
-A user-level skill is invokable from **any** project, so you can run the feedback loop against
-whatever web app you're working on — not only when your CWD is this repo.
+### Install / use
 
-### How the user-level skill reaches this repo's tooling
+```
+/plugin marketplace add leetwito/cc-htmlfeedback   # or: /plugin marketplace add .  (local dev)
+/plugin install cc-htmlfeedback@cc-htmlfeedback
+/cc-htmlfeedback
+```
 
-Because the skill is global, it launches the tooling by **absolute path** (the skill defines
-`TOOLING = <absolute path to your local clone of this repo>`):
-
-- `node $TOOLING/server.js --root <dir> --port <port>` (or `--proxy <url>`)
-- `node $TOOLING/lib/watch-inbox.js <QUEUE> <lineCount> <timeoutMs>`
-
-`server.js` resolves its own `./lib/*` and `extension/feedback-widget.js` relative to its file
-location, so it runs correctly from any CWD. If you move or rename this repo, update the
-`TOOLING` path in `~/.claude/skills/cc-htmlfeedback/SKILL.md`.
+After editing the skill text, run `/plugin marketplace update` to refresh the installed copy.
 
 ## Releasing — bump the extension version when needed
 
 When you ship a user-facing change to the widget or the extension (new behavior, fixes,
-UX changes), **bump the version** in **both** `extension/manifest.json` and `package.json`
-(keep them in sync, semver). Chrome only treats an extension as updated when `manifest.json`
-`version` increases, so without a bump users keep the old widget. Rebuild (`node build.js`)
-after editing the widget so `extension/feedback-widget.js` matches the source.
+UX changes), **bump the version** in `extension/manifest.json` and `package.json` (keep them in
+sync, semver). Chrome only treats an extension as updated when `manifest.json` `version`
+increases, so without a bump users keep the old widget. For a plugin-facing change (skill, server,
+widget) also bump `plugins/cc-htmlfeedback/.claude-plugin/plugin.json` and the plugin entry in
+`.claude-plugin/marketplace.json` (keep them in sync). Rebuild (`node build.js`) after editing the
+widget/server/lib so `extension/feedback-widget.js` and the assembled `plugins/cc-htmlfeedback/`
+copies match the source (`node build.js --check` verifies).
