@@ -1,6 +1,13 @@
 # cc-htmlfeedback
 
-A zero-dependency, in-page feedback tool. Highlight text on any page to leave comments and suggestions, then either copy the structured feedback or let Claude Code fix it live.
+A zero-dependency, in-page feedback tool. **Highlight text on the page to leave a comment** - that's how every note is made - then either copy the structured feedback or let Claude Code fix it live.
+
+## Two modes
+
+1. **Simple (start here).** Chrome extension only. Highlight text, write notes, **copy** the structured feedback and paste it wherever you want. No server, no setup beyond loading the extension.
+2. **Advanced (live fixes).** A Claude Code plugin serves your HTML page and turns each comment into a ticket Claude applies and verifies on the fly - the page updates in place, no reload.
+
+Get the simple mode working first, then add the plugin when you want live fixes.
 
 ## Features
 
@@ -9,11 +16,11 @@ A zero-dependency, in-page feedback tool. Highlight text on any page to leave co
 - **One-click export.** Copy clean, structured feedback (with the page URL) to paste anywhere.
 - **Live fixes with Claude Code.** Connect to a Claude Code session and your comments become a work queue: comment -> Claude edits the source -> the page updates in place, no reload.
 
-## Install
+## Simple mode: Chrome extension
 
-The widget loads as a Chrome extension. That's the way to use it.
+The widget loads as a Chrome extension - this is all you need for copy-paste feedback.
 
-### Chrome extension
+### Load the extension
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `extension/` folder.
@@ -24,9 +31,9 @@ The widget loads as a Chrome extension. That's the way to use it.
 ### Try it first
 Open `playground_file.html` in your browser and load the extension to play with every feature on a sample document.
 
-## Live mode with Claude Code
+## Advanced mode: live fixes with Claude Code
 
-Skip the copy-paste: comments become tickets that Claude Code applies and verifies for you.
+Once the extension works, add the plugin to skip the copy-paste: comments become tickets that Claude Code applies and verifies for you.
 
 Install the plugin once (it bundles the skill plus the server it runs):
 
