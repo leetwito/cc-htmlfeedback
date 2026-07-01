@@ -1,5 +1,9 @@
 # cc-htmlfeedback
 
+<p align="center">
+  <img src="docs/media/cc-htmlfeedback-demo.webp" alt="cc-htmlfeedback demo: highlight text on the page to leave a comment, then Claude Code turns each note into a ticket and fixes it live" width="800">
+</p>
+
 A zero-dependency, in-page feedback tool. **Highlight text on the page to leave a comment** - that's how every note is made - then either copy the structured feedback or let Claude Code fix it live.
 
 ## Two modes
